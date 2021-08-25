@@ -6,12 +6,10 @@ import (
 	"github.com/goware/cachestore"
 )
 
-var _ cachestore.Storage = &NoStore{}
-
 type NoStore struct{}
 
-func NewNoStore() *NoStore {
-	return &NoStore{}
+func New() (cachestore.Storage, error) {
+	return &NoStore{}, nil
 }
 
 func (s *NoStore) Exists(ctx context.Context, key string) (bool, error) {

@@ -10,8 +10,6 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 )
 
-var _ cachestore.Storage = &MemStore{}
-
 const defaultLRUSize = 512
 
 type MemStore struct {
@@ -19,11 +17,11 @@ type MemStore struct {
 	mu      sync.RWMutex
 }
 
-func New() (*MemStore, error) {
+func New() (cachestore.Storage, error) {
 	return NewWithSize(defaultLRUSize)
 }
 
-func NewWithSize(size int) (*MemStore, error) {
+func NewWithSize(size int) (cachestore.Storage, error) {
 	if size < 1 {
 		return nil, errors.New("size must be greater or equal to 1")
 	}
