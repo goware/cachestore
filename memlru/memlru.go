@@ -12,7 +12,7 @@ import (
 
 const defaultLRUSize = 512
 
-type MemStore struct {
+type MemLRU struct {
 	backend *lru.Cache
 	mu      sync.RWMutex
 }
@@ -31,24 +31,24 @@ func NewWithSize(size int) (cachestore.Storage, error) {
 		return nil, err
 	}
 
-	return &MemStore{
+	return &MemLRU{
 		backend: backend,
 	}, nil
 }
 
-func (m *MemStore) Exists(ctx context.Context, key string) (bool, error) {
+func (m *MemLRU) Exists(ctx context.Context, key string) (bool, error) {
 	_, exists := m.backend.Peek(key)
 	return exists, nil
 }
 
-func (m *MemStore) Set(ctx context.Context, key string, value []byte) error {
+func (m *MemLRU) Set(ctx context.Context, key string, value []byte) error {
 	m.mu.Lock()
 	m.backend.Add(key, value)
 	m.mu.Unlock()
 	return nil
 }
 
-func (m *MemStore) Get(ctx context.Context, key string) ([]byte, error) {
+func (m *MemLRU) Get(ctx context.Context, key string) ([]byte, error) {
 	m.mu.Lock()
 	v, ok := m.backend.Get(key)
 	m.mu.Unlock()
@@ -65,7 +65,7 @@ func (m *MemStore) Get(ctx context.Context, key string) ([]byte, error) {
 	return b, nil
 }
 
-func (m *MemStore) Delete(ctx context.Context, key string) error {
+func (m *MemLRU) Delete(ctx context.Context, key string) error {
 	m.mu.Lock()
 	present := m.backend.Remove(key)
 	m.mu.Unlock()
