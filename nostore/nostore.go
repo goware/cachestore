@@ -14,6 +14,10 @@ func NewNoStore() *NoStore {
 	return &NoStore{}
 }
 
+func (s *NoStore) Exists(ctx context.Context, key string) (bool, error) {
+	return false, nil
+}
+
 func (s *NoStore) Set(ctx context.Context, key string, value []byte) error {
 	return nil
 }
