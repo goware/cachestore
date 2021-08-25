@@ -17,7 +17,7 @@ type RedisStore struct {
 	pool *redis.Pool
 }
 
-func New(cfg *RedisConfig) (cachestore.Storage, error) {
+func New(cfg *Config) (cachestore.Storage, error) {
 	return createWithDialFunc(func() (redis.Conn, error) {
 		address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
