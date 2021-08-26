@@ -13,18 +13,24 @@ import (
 // const LongTime = time.Second * 24 * 60 * 60 * 30 // 1 month in seconds
 const LongTime = time.Second * 24 * 60 * 60 // 1 day in seconds
 
+var _ cachestore.Store = &RedisStore{}
+
 type RedisStore struct {
-	pool *redis.Pool
+	pool   *redis.Pool
+	keyTTL float64
 }
 
-func New(cfg *Config) (cachestore.Storage, error) {
+func New(cfg *Config) (cachestore.Store, error) {
 	if cfg.Host == "" {
 		return nil, errors.New("missing \"host\" parameter")
 	}
 	if cfg.Port < 1 {
 		cfg.Port = 6379
 	}
-	return createWithDialFunc(func() (redis.Conn, error) {
+	if cfg.KeyTTL == 0 {
+		cfg.KeyTTL = LongTime // default setting
+	}
+	return createWithDialFunc(cfg, func() (redis.Conn, error) {
 		address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
 		c, err := redis.Dial("tcp", address)
@@ -32,19 +38,33 @@ func New(cfg *Config) (cachestore.Storage, error) {
 	})
 }
 
-func createWithDialFunc(dial func() (redis.Conn, error)) (*RedisStore, error) {
+func NewWithKeyTTL(cfg *Config, keyTTL time.Duration) (cachestore.Store, error) {
+	cfg.KeyTTL = keyTTL
+	return New(cfg)
+}
+
+func createWithDialFunc(cfg *Config, dial func() (redis.Conn, error)) (*RedisStore, error) {
 	return &RedisStore{
-		pool: newPool(dial),
+		pool:   newPool(cfg, dial),
+		keyTTL: cfg.KeyTTL.Seconds(),
 	}, nil
 }
 
 // taken and adapted from https://medium.com/@gilcrest_65433/basic-redis-examples-with-go-a3348a12878e
-func newPool(dial func() (redis.Conn, error)) *redis.Pool {
+func newPool(cfg *Config, dial func() (redis.Conn, error)) *redis.Pool {
+	var maxIdle, maxActive = cfg.MaxIdle, cfg.MaxActive
+	if maxIdle <= 0 {
+		maxIdle = 4
+	}
+	if maxActive <= 0 {
+		maxActive = 8
+	}
+
 	return &redis.Pool{
 		// Maximum number of idle connections in the pool.
-		MaxIdle: 4,
+		MaxIdle: maxIdle,
 		// max number of connections
-		MaxActive: 8,
+		MaxActive: maxActive,
 
 		Dial: dial,
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
@@ -55,6 +75,13 @@ func newPool(dial func() (redis.Conn, error)) *redis.Pool {
 }
 
 func (c *RedisStore) Set(ctx context.Context, key string, value []byte) error {
+	if len(key) > cachestore.MaxKeyLength {
+		return cachestore.ErrKeyLengthTooLong
+	}
+	if len(key) == 0 {
+		return cachestore.ErrInvalidKey
+	}
+
 	conn := c.pool.Get()
 	// the redigo docs clearly states that connections read from the pool needs
 	// to be closed by the application, but it feels a little odd closing
@@ -63,7 +90,7 @@ func (c *RedisStore) Set(ctx context.Context, key string, value []byte) error {
 
 	// TODO: handle timeout here, and return error if we hit it via ctx
 
-	_, err := conn.Do("SETEX", key, LongTime.Seconds(), value)
+	_, err := conn.Do("SETEX", key, c.keyTTL, value)
 	return errors.Wrapf(err, "failed setting key %s", key)
 }
 
