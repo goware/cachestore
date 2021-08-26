@@ -17,7 +17,7 @@ var _ cachestore.Store = &RedisStore{}
 
 type RedisStore struct {
 	pool   *redis.Pool
-	keyTTL time.Duration
+	keyTTL float64
 }
 
 func New(cfg *Config) (cachestore.Store, error) {
@@ -45,7 +45,8 @@ func NewWithKeyTTL(cfg *Config, keyTTL time.Duration) (cachestore.Store, error) 
 
 func createWithDialFunc(cfg *Config, dial func() (redis.Conn, error)) (*RedisStore, error) {
 	return &RedisStore{
-		pool: newPool(cfg, dial),
+		pool:   newPool(cfg, dial),
+		keyTTL: cfg.KeyTTL.Seconds(),
 	}, nil
 }
 
@@ -89,7 +90,7 @@ func (c *RedisStore) Set(ctx context.Context, key string, value []byte) error {
 
 	// TODO: handle timeout here, and return error if we hit it via ctx
 
-	_, err := conn.Do("SETEX", key, LongTime.Seconds(), value)
+	_, err := conn.Do("SETEX", key, c.keyTTL, value)
 	return errors.Wrapf(err, "failed setting key %s", key)
 }
 
