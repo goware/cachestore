@@ -19,7 +19,7 @@ type MemLRU struct {
 	mu      sync.RWMutex
 }
 
-func New(lruSize int) (cachestore.Store, error) {
+func New() (cachestore.Store, error) {
 	return NewWithSize(defaultLRUSize)
 }
 
