@@ -18,6 +18,12 @@ type RedisStore struct {
 }
 
 func New(cfg *Config) (cachestore.Storage, error) {
+	if cfg.Host == "" {
+		return nil, errors.New("missing \"host\" parameter")
+	}
+	if cfg.Port < 1 {
+		cfg.Port = 6379
+	}
 	return createWithDialFunc(func() (redis.Conn, error) {
 		address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
