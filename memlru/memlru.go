@@ -10,6 +10,8 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 )
 
+var _ cachestore.Store = &MemLRU{}
+
 const defaultLRUSize = 512
 
 type MemLRU struct {
@@ -17,11 +19,11 @@ type MemLRU struct {
 	mu      sync.RWMutex
 }
 
-func New() (cachestore.Storage, error) {
+func New(lruSize int) (cachestore.Store, error) {
 	return NewWithSize(defaultLRUSize)
 }
 
-func NewWithSize(size int) (cachestore.Storage, error) {
+func NewWithSize(size int) (cachestore.Store, error) {
 	if size < 1 {
 		return nil, errors.New("size must be greater or equal to 1")
 	}
@@ -31,9 +33,7 @@ func NewWithSize(size int) (cachestore.Storage, error) {
 		return nil, err
 	}
 
-	return &MemLRU{
-		backend: backend,
-	}, nil
+	return &MemLRU{backend: backend}, nil
 }
 
 func (m *MemLRU) Exists(ctx context.Context, key string) (bool, error) {
@@ -42,6 +42,12 @@ func (m *MemLRU) Exists(ctx context.Context, key string) (bool, error) {
 }
 
 func (m *MemLRU) Set(ctx context.Context, key string, value []byte) error {
+	if len(key) > cachestore.MaxKeyLength {
+		return cachestore.ErrKeyLengthTooLong
+	}
+	if len(key) == 0 {
+		return cachestore.ErrInvalidKey
+	}
 	m.mu.Lock()
 	m.backend.Add(key, value)
 	m.mu.Unlock()
