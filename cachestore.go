@@ -17,4 +17,7 @@ type Store interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 	Exists(ctx context.Context, key string) (bool, error)
 	Delete(ctx context.Context, key string) error
+
+	BatchSet(ctx context.Context, keys []string, values [][]byte) error
+	BatchGet(ctx context.Context, keys []string) ([][]byte, error)
 }

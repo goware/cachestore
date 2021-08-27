@@ -54,6 +54,19 @@ func (m *MemLRU) Set(ctx context.Context, key string, value []byte) error {
 	return nil
 }
 
+func (m *MemLRU) BatchSet(ctx context.Context, keys []string, values [][]byte) error {
+	if len(keys) != len(values) {
+		return errors.New("keys and values are not the same length")
+	}
+
+	m.mu.Lock()
+	for i, key := range keys {
+		m.backend.Add(key, values[i])
+	}
+	m.mu.Unlock()
+	return nil
+}
+
 func (m *MemLRU) Get(ctx context.Context, key string) ([]byte, error) {
 	m.mu.Lock()
 	v, ok := m.backend.Get(key)
@@ -69,6 +82,29 @@ func (m *MemLRU) Get(ctx context.Context, key string) ([]byte, error) {
 	}
 
 	return b, nil
+}
+
+func (m *MemLRU) BatchGet(ctx context.Context, keys []string) ([][]byte, error) {
+	vals := make([][]byte, 0, len(keys))
+	m.mu.Lock()
+	for _, key := range keys {
+		v, ok := m.backend.Get(key)
+		if !ok {
+			// key not found
+			continue
+		}
+
+		b, ok := v.([]byte)
+		if !ok {
+			return nil, fmt.Errorf("memlru#Get: value of key %s is not a []byte", key)
+		}
+
+		vals = append(vals, b)
+
+	}
+	m.mu.Unlock()
+
+	return vals, nil
 }
 
 func (m *MemLRU) Delete(ctx context.Context, key string) error {

@@ -94,6 +94,35 @@ func (c *RedisStore) Set(ctx context.Context, key string, value []byte) error {
 	return errors.Wrapf(err, "failed setting key %s", key)
 }
 
+func (c *RedisStore) BatchSet(ctx context.Context, keys []string, values [][]byte) error {
+	if len(keys) != len(values) {
+		return errors.New("keys and values are not the same length")
+	}
+
+	conn := c.pool.Get()
+	defer conn.Close()
+
+	// use pipelining to insert all keys. This ensures only one round-trip to
+	// the server. We could use MSET but it doesn't support TTL so we'd need to
+	// send one EXPIRE command per key anyway
+	for i, key := range keys {
+		err := conn.Send("SETEX", key, LongTime.Seconds(), values[i])
+		if err != nil {
+			return errors.Wrap(err, "failed writing key")
+		}
+	}
+
+	// send all commands
+	err := conn.Flush()
+	if err != nil {
+		return errors.Wrap(err, "error encountered when sending commands to server")
+	}
+
+	// and wait for the reply
+	_, err = conn.Receive()
+	return errors.Wrap(err, "error encountered while batch-inserting value")
+}
+
 func (c *RedisStore) Get(ctx context.Context, key string) ([]byte, error) {
 	conn := c.pool.Get()
 	defer conn.Close()
@@ -107,6 +136,21 @@ func (c *RedisStore) Get(ctx context.Context, key string) ([]byte, error) {
 		return nil, nil
 	}
 	return redis.Bytes(value, nil)
+}
+
+func (c *RedisStore) BatchGet(ctx context.Context, keys []string) ([][]byte, error) {
+	conn := c.pool.Get()
+	defer conn.Close()
+
+	// convert []string to []interface{}
+	ks := make([]interface{}, len(keys))
+	for i, k := range keys {
+		ks[i] = k
+	}
+
+	// execute MGET and convert result to [][]byte
+	values, err := redis.ByteSlices(conn.Do("MGET", ks...))
+	return values, errors.Wrap(err, "MGET command failed")
 }
 
 func (c *RedisStore) Exists(ctx context.Context, key string) (bool, error) {

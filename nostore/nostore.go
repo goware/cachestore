@@ -18,7 +18,15 @@ func (s *NoStore) Set(ctx context.Context, key string, value []byte) error {
 	return nil
 }
 
+func (s *NoStore) BatchSet(ctx context.Context, keys []string, values [][]byte) error {
+	return nil
+}
+
 func (s *NoStore) Get(ctx context.Context, key string) ([]byte, error) {
+	return nil, nil
+}
+
+func (s *NoStore) BatchGet(ctx context.Context, keys []string) ([][]byte, error) {
 	return nil, nil
 }
 
