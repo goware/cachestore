@@ -54,10 +54,10 @@ func createWithDialFunc(cfg *Config, dial func() (redis.Conn, error)) (*RedisSto
 func newPool(cfg *Config, dial func() (redis.Conn, error)) *redis.Pool {
 	var maxIdle, maxActive = cfg.MaxIdle, cfg.MaxActive
 	if maxIdle <= 0 {
-		maxIdle = 4
+		maxIdle = 20
 	}
 	if maxActive <= 0 {
-		maxActive = 8
+		maxActive = 50
 	}
 
 	return &redis.Pool{

@@ -90,7 +90,8 @@ func (m *MemLRU) BatchGet(ctx context.Context, keys []string) ([][]byte, error) 
 	for _, key := range keys {
 		v, ok := m.backend.Get(key)
 		if !ok {
-			// key not found
+			// key not found, add nil
+			vals = append(vals, nil)
 			continue
 		}
 
@@ -98,9 +99,7 @@ func (m *MemLRU) BatchGet(ctx context.Context, keys []string) ([][]byte, error) 
 		if !ok {
 			return nil, fmt.Errorf("memlru#Get: value of key %s is not a []byte", key)
 		}
-
 		vals = append(vals, b)
-
 	}
 	m.mu.Unlock()
 
