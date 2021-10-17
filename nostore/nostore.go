@@ -2,6 +2,7 @@ package nostore
 
 import (
 	"context"
+	"time"
 
 	"github.com/goware/cachestore"
 )
@@ -15,6 +16,10 @@ func New() (cachestore.Store, error) {
 }
 
 func (s *NoStore) Set(ctx context.Context, key string, value []byte) error {
+	return nil
+}
+
+func (s *NoStore) SetEx(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	return nil
 }
 

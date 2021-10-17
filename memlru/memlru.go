@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/goware/cachestore"
 	lru "github.com/hashicorp/golang-lru"
@@ -52,6 +53,11 @@ func (m *MemLRU) Set(ctx context.Context, key string, value []byte) error {
 	m.backend.Add(key, value)
 	m.mu.Unlock()
 	return nil
+}
+
+func (m *MemLRU) SetEx(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	// NOTE: currently we ignore the ttl value
+	return m.Set(ctx, key, value)
 }
 
 func (m *MemLRU) BatchSet(ctx context.Context, keys []string, values [][]byte) error {

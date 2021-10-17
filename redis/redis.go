@@ -75,6 +75,11 @@ func newPool(cfg *Config, dial func() (redis.Conn, error)) *redis.Pool {
 }
 
 func (c *RedisStore) Set(ctx context.Context, key string, value []byte) error {
+	// call SetEx passing default keyTTL
+	return c.SetEx(ctx, key, value, time.Duration(c.keyTTL)*time.Second)
+}
+
+func (c *RedisStore) SetEx(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	if len(key) > cachestore.MaxKeyLength {
 		return cachestore.ErrKeyLengthTooLong
 	}
@@ -90,7 +95,7 @@ func (c *RedisStore) Set(ctx context.Context, key string, value []byte) error {
 
 	// TODO: handle timeout here, and return error if we hit it via ctx
 
-	_, err := conn.Do("SETEX", key, c.keyTTL, value)
+	_, err := conn.Do("SETEX", key, ttl.Seconds(), value)
 	return errors.Wrapf(err, "failed setting key %s", key)
 }
 
