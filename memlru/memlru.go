@@ -13,11 +13,15 @@ import (
 
 var _ cachestore.Store = &MemLRU{}
 
+// determines the minimum time between every TTL-based removal
+var lastExpiryCheckInterval = time.Second * 5
+
 const defaultLRUSize = 512
 
 type MemLRU struct {
 	backend         *lru.Cache
 	expirationQueue *expirationQueue
+	lastExpiryCheck time.Time
 	mu              sync.RWMutex
 }
 
@@ -148,8 +152,14 @@ func (m *MemLRU) setKeyValue(ctx context.Context, key string, value []byte) erro
 }
 
 func (m *MemLRU) removeExpiredKeys() {
+	now := time.Now()
+	if m.lastExpiryCheck.Add(lastExpiryCheckInterval).After(now) {
+		// another removal happened recently
+		return
+	}
 	expiredKeys := m.expirationQueue.Expired()
 	for _, key := range expiredKeys {
 		m.backend.Remove(key)
 	}
+	m.lastExpiryCheck = now
 }

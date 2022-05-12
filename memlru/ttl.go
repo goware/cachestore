@@ -26,19 +26,25 @@ func (e *expirationQueue) Push(key string, ttl time.Duration) {
 		expiresAt: now.Add(ttl),
 	}
 
-	e.keys = append(e.keys, nil) // make room for a new item
+	index := 0
+	for i := 0; i < len(e.keys); i++ {
+		key := e.keys[i]
 
-	after := len(e.keys) // append at the end by default
-	for i, key := range e.keys {
-		if key != nil && key.expiresAt.Before(newItem.expiresAt) {
+		if key.key == newItem.key {
+			// found a key with the same name, remove it
+			e.keys = append(e.keys[:i], e.keys[i+1:]...)
+			i--
 			continue
 		}
-		after = i // found a better position
-		break
+
+		if key.expiresAt.Before(newItem.expiresAt) {
+			index = i + 1
+		}
 	}
 
-	copy(e.keys[after+1:], e.keys[after:]) // re-organize tail
-	e.keys[after] = newItem                // insert item in place
+	e.keys = append(e.keys, nil)           // make room for a new item
+	copy(e.keys[index+1:], e.keys[index:]) // re-organize tail
+	e.keys[index] = newItem                // insert item in place
 }
 
 func (e *expirationQueue) Len() int {

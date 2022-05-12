@@ -27,6 +27,26 @@ func TestExpirationQueue(t *testing.T) {
 	assert.Equal(t, 6, q.Len())
 
 	{
+		var lastTime time.Time
+		for _, key := range q.keys {
+			assert.LessOrEqual(t, lastTime, key.expiresAt)
+			lastTime = key.expiresAt
+		}
+	}
+
+	q.Push("f", time.Millisecond*500)
+
+	assert.Equal(t, 6, q.Len())
+
+	{
+		var lastTime time.Time
+		for _, key := range q.keys {
+			assert.LessOrEqual(t, lastTime, key.expiresAt)
+			lastTime = key.expiresAt
+		}
+	}
+
+	{
 		keys := q.expiredAt(time.Now())
 
 		assert.Equal(t, 6, q.Len())
@@ -43,15 +63,29 @@ func TestExpirationQueue(t *testing.T) {
 	{
 		keys := q.expiredAt(time.Now().Add(time.Millisecond * 200))
 
-		assert.Equal(t, 2, q.Len())
-		assert.Equal(t, 4, len(keys))
+		assert.Equal(t, 3, q.Len())
+		assert.Equal(t, 3, len(keys))
 	}
 
 	for i := 0; i < 100; i++ {
 		q.Push("z", time.Millisecond*time.Duration(50+rand.Intn(500)))
 	}
 
-	assert.Equal(t, 102, q.Len())
+	assert.Equal(t, 4, q.Len())
+
+	{
+		var lastTime time.Time
+		for _, key := range q.keys {
+			assert.LessOrEqual(t, lastTime, key.expiresAt)
+			lastTime = key.expiresAt
+		}
+	}
+
+	for i := 0; i < 100; i++ {
+		q.Push(fmt.Sprintf("key-%d", i), time.Millisecond*time.Duration(50+rand.Intn(500)))
+	}
+
+	assert.Equal(t, 104, q.Len())
 
 	{
 		var lastTime time.Time
@@ -63,18 +97,18 @@ func TestExpirationQueue(t *testing.T) {
 
 	{
 		keys := q.expiredAt(time.Now())
-		assert.Equal(t, 102, q.Len())
+		assert.Equal(t, 104, q.Len())
 		assert.Equal(t, 0, len(keys))
 	}
 
 	{
 		keys := q.expiredAt(time.Now().Add(time.Second * 10))
 		assert.Equal(t, 0, q.Len())
-		assert.Equal(t, 102, len(keys))
+		assert.Equal(t, 104, len(keys))
 	}
 
 	for i := 0; i < 100; i++ {
-		q.Push("z", time.Millisecond*time.Duration(50+rand.Intn(500)))
+		q.Push(fmt.Sprintf("key-%d", i), time.Millisecond*time.Duration(50+rand.Intn(500)))
 	}
 
 	{
