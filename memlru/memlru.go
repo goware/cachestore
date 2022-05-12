@@ -16,8 +16,9 @@ var _ cachestore.Store = &MemLRU{}
 const defaultLRUSize = 512
 
 type MemLRU struct {
-	backend *lru.Cache
-	mu      sync.RWMutex
+	backend         *lru.Cache
+	expirationQueue *expirationQueue
+	mu              sync.RWMutex
 }
 
 func New() (cachestore.Store, error) {
@@ -34,30 +35,39 @@ func NewWithSize(size int) (cachestore.Store, error) {
 		return nil, err
 	}
 
-	return &MemLRU{backend: backend}, nil
+	return &MemLRU{
+		backend:         backend,
+		expirationQueue: newExpirationQueue(),
+	}, nil
 }
 
 func (m *MemLRU) Exists(ctx context.Context, key string) (bool, error) {
+	m.mu.Lock()
+	m.removeExpiredKeys()
 	_, exists := m.backend.Peek(key)
+	m.mu.Unlock()
 	return exists, nil
 }
 
 func (m *MemLRU) Set(ctx context.Context, key string, value []byte) error {
-	if len(key) > cachestore.MaxKeyLength {
-		return cachestore.ErrKeyLengthTooLong
-	}
-	if len(key) == 0 {
-		return cachestore.ErrInvalidKey
-	}
 	m.mu.Lock()
-	m.backend.Add(key, value)
-	m.mu.Unlock()
+	defer m.mu.Lock()
+	if err := m.setKeyValue(ctx, key, value); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (m *MemLRU) SetEx(ctx context.Context, key string, value []byte, ttl time.Duration) error {
-	// NOTE: currently we ignore the ttl value
-	return m.Set(ctx, key, value)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if err := m.setKeyValue(ctx, key, value); err != nil {
+		return err
+	}
+
+	m.expirationQueue.Push(key, ttl)
+	return nil
 }
 
 func (m *MemLRU) BatchSet(ctx context.Context, keys []string, values [][]byte) error {
@@ -75,6 +85,7 @@ func (m *MemLRU) BatchSet(ctx context.Context, keys []string, values [][]byte) e
 
 func (m *MemLRU) Get(ctx context.Context, key string) ([]byte, error) {
 	m.mu.Lock()
+	m.removeExpiredKeys()
 	v, ok := m.backend.Get(key)
 	m.mu.Unlock()
 
@@ -92,7 +103,10 @@ func (m *MemLRU) Get(ctx context.Context, key string) ([]byte, error) {
 
 func (m *MemLRU) BatchGet(ctx context.Context, keys []string) ([][]byte, error) {
 	vals := make([][]byte, 0, len(keys))
+
 	m.mu.Lock()
+	m.removeExpiredKeys()
+
 	for _, key := range keys {
 		v, ok := m.backend.Get(key)
 		if !ok {
@@ -120,4 +134,22 @@ func (m *MemLRU) Delete(ctx context.Context, key string) error {
 	// NOTE/TODO: we do not check for presence, prob okay
 	_ = present
 	return nil
+}
+
+func (m *MemLRU) setKeyValue(ctx context.Context, key string, value []byte) error {
+	if len(key) > cachestore.MaxKeyLength {
+		return cachestore.ErrKeyLengthTooLong
+	}
+	if len(key) == 0 {
+		return cachestore.ErrInvalidKey
+	}
+	m.backend.Add(key, value)
+	return nil
+}
+
+func (m *MemLRU) removeExpiredKeys() {
+	expiredKeys := m.expirationQueue.Expired()
+	for _, key := range expiredKeys {
+		m.backend.Remove(key)
+	}
 }
