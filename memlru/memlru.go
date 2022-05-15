@@ -80,10 +80,27 @@ func (m *MemLRU) BatchSet(ctx context.Context, keys []string, values [][]byte) e
 	}
 
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	for i, key := range keys {
 		m.backend.Add(key, values[i])
 	}
-	m.mu.Unlock()
+	return nil
+}
+
+func (m *MemLRU) BatchSetEx(ctx context.Context, keys []string, values [][]byte, ttl time.Duration) error {
+	if len(keys) != len(values) {
+		return errors.New("keys and values are not the same length")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for i, key := range keys {
+		m.backend.Add(key, values[i])
+		m.expirationQueue.Push(key, ttl) // TODO: probably a more efficient way to do this batch push
+	}
+
 	return nil
 }
 

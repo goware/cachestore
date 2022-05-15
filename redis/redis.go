@@ -100,6 +100,10 @@ func (c *RedisStore) SetEx(ctx context.Context, key string, value []byte, ttl ti
 }
 
 func (c *RedisStore) BatchSet(ctx context.Context, keys []string, values [][]byte) error {
+	return c.BatchSetEx(ctx, keys, values, LongTime)
+}
+
+func (c *RedisStore) BatchSetEx(ctx context.Context, keys []string, values [][]byte, ttl time.Duration) error {
 	if len(keys) != len(values) {
 		return errors.New("keys and values are not the same length")
 	}
@@ -111,7 +115,7 @@ func (c *RedisStore) BatchSet(ctx context.Context, keys []string, values [][]byt
 	// the server. We could use MSET but it doesn't support TTL so we'd need to
 	// send one EXPIRE command per key anyway
 	for i, key := range keys {
-		err := conn.Send("SETEX", key, LongTime.Seconds(), values[i])
+		err := conn.Send("SETEX", key, ttl.Seconds(), values[i])
 		if err != nil {
 			return errors.Wrap(err, "failed writing key")
 		}

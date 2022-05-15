@@ -15,6 +15,10 @@ func New() (cachestore.Store, error) {
 	return &NoStore{}, nil
 }
 
+func (s *NoStore) Exists(ctx context.Context, key string) (bool, error) {
+	return false, nil
+}
+
 func (s *NoStore) Set(ctx context.Context, key string, value []byte) error {
 	return nil
 }
@@ -27,16 +31,16 @@ func (s *NoStore) BatchSet(ctx context.Context, keys []string, values [][]byte) 
 	return nil
 }
 
+func (s *NoStore) BatchSetEx(ctx context.Context, keys []string, values [][]byte, ttl time.Duration) error {
+	return nil
+}
+
 func (s *NoStore) Get(ctx context.Context, key string) ([]byte, error) {
 	return nil, nil
 }
 
 func (s *NoStore) BatchGet(ctx context.Context, keys []string) ([][]byte, error) {
 	return nil, nil
-}
-
-func (s *NoStore) Exists(ctx context.Context, key string) (bool, error) {
-	return false, nil
 }
 
 func (s *NoStore) Delete(ctx context.Context, key string) error {
