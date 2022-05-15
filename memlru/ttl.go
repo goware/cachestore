@@ -5,14 +5,18 @@ import (
 	"time"
 )
 
+type expirationQueue struct {
+	keys []expirationQueueItem
+	mu   sync.Mutex
+}
+
 type expirationQueueItem struct {
 	key       string
 	expiresAt time.Time
 }
 
-type expirationQueue struct {
-	keys []*expirationQueueItem
-	mu   sync.Mutex
+func newExpirationQueue() *expirationQueue {
+	return &expirationQueue{keys: []expirationQueueItem{}}
 }
 
 func (e *expirationQueue) Push(key string, ttl time.Duration) {
@@ -21,7 +25,7 @@ func (e *expirationQueue) Push(key string, ttl time.Duration) {
 
 	now := time.Now()
 
-	newItem := &expirationQueueItem{
+	newItem := expirationQueueItem{
 		key:       key,
 		expiresAt: now.Add(ttl),
 	}
@@ -42,9 +46,9 @@ func (e *expirationQueue) Push(key string, ttl time.Duration) {
 		}
 	}
 
-	e.keys = append(e.keys, nil)           // make room for a new item
-	copy(e.keys[index+1:], e.keys[index:]) // re-organize tail
-	e.keys[index] = newItem                // insert item in place
+	e.keys = append(e.keys, expirationQueueItem{}) // make room for a new item
+	copy(e.keys[index+1:], e.keys[index:])         // re-organize tail
+	e.keys[index] = newItem                        // insert item in place
 }
 
 func (e *expirationQueue) Len() int {
@@ -71,8 +75,4 @@ func (e *expirationQueue) expiredAt(t time.Time) []string {
 	// keep keys newer than t
 	e.keys = e.keys[len(keys):]
 	return keys
-}
-
-func newExpirationQueue() *expirationQueue {
-	return &expirationQueue{keys: []*expirationQueueItem{}}
 }

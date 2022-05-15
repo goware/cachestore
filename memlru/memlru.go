@@ -55,7 +55,7 @@ func (m *MemLRU) Exists(ctx context.Context, key string) (bool, error) {
 
 func (m *MemLRU) Set(ctx context.Context, key string, value []byte) error {
 	m.mu.Lock()
-	defer m.mu.Lock()
+	defer m.mu.Unlock()
 	if err := m.setKeyValue(ctx, key, value); err != nil {
 		return err
 	}
