@@ -33,7 +33,7 @@ func New(cfg *Config) (cachestore.Store, error) {
 	return createWithDialFunc(cfg, func() (redis.Conn, error) {
 		address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
-		c, err := redis.Dial("tcp", address)
+		c, err := redis.Dial("tcp", address, redis.DialDatabase(cfg.DBIndex))
 		return c, errors.Wrapf(err, "unable to dial redis host %v", address) // errors.Wrap(nil, ...) returns nil
 	})
 }
