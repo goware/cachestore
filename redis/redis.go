@@ -189,15 +189,40 @@ func (c *RedisStore) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	conn := c.pool.Get()
 	defer conn.Close()
 
-	keys, err := redis.Values(conn.Do("SCAN", "MATCH", fmt.Sprintf("%s:*", keyPrefix)))
+	values, err := redis.Values(conn.Do("SCAN", 0, "MATCH", fmt.Sprintf("%s:*", keyPrefix)))
 	if err != nil {
 		return err
 	}
 
+	keys, ok := values[1].([]interface{})
+	if !ok {
+		return errors.New("SCAN command returned unexpected result")
+	}
+
+	cursor := fmt.Sprintf("%s", values[0])
+	for cursor != "0" {
+		values, err = redis.Values(conn.Do("SCAN", cursor, "MATCH", fmt.Sprintf("%s:*", keyPrefix)))
+		if err != nil {
+			return err
+		}
+
+		keys = append(keys, values[1].([]interface{})...)
+		cursor = fmt.Sprintf("%s", values[0])
+	}
+
 	// prepare for a transaction
-	conn.Send("MULTI")
+	err = conn.Send("MULTI")
+	if err != nil {
+		return err
+	}
+
 	for _, key := range keys {
-		conn.Send("UNLINK", key)
+		// UNLINK is non blocking, hence not using DEL
+		// overall on big queries faster
+		err = conn.Send("UNLINK", key)
+		if err != nil {
+			return err
+		}
 	}
 
 	_, err = conn.Do("EXEC")
