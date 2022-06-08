@@ -160,6 +160,8 @@ func (m *MemLRU) Delete(ctx context.Context, key string) error {
 
 func (m *MemLRU) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	for _, key := range m.backend.Keys() {
 		if _, ok := key.(string); !ok {
 			continue
@@ -168,7 +170,6 @@ func (m *MemLRU) DeletePrefix(ctx context.Context, keyPrefix string) error {
 			m.backend.Remove(key)
 		}
 	}
-	m.mu.Unlock()
 
 	return nil
 }
