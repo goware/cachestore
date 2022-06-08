@@ -185,6 +185,26 @@ func (c *RedisStore) Delete(ctx context.Context, key string) error {
 	return err
 }
 
+func (c *RedisStore) DeletePrefix(ctx context.Context, keyPrefix string) error {
+	conn := c.pool.Get()
+	defer conn.Close()
+
+	keys, err := redis.Values(conn.Do("SCAN", "MATCH", fmt.Sprintf("%s:*", keyPrefix)))
+	if err != nil {
+		return err
+	}
+
+	// prepare for a transaction
+	conn.Send("MULTI")
+	for _, key := range keys {
+		conn.Send("UNLINK", key)
+	}
+
+	_, err = conn.Do("EXEC")
+
+	return err
+}
+
 func (c *RedisStore) Do(cmd string, args ...interface{}) (interface{}, error) {
 	conn := c.pool.Get()
 	defer conn.Close()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -154,6 +155,21 @@ func (m *MemLRU) Delete(ctx context.Context, key string) error {
 
 	// NOTE/TODO: we do not check for presence, prob okay
 	_ = present
+	return nil
+}
+
+func (m *MemLRU) DeletePrefix(ctx context.Context, keyPrefix string) error {
+	m.mu.Lock()
+	for _, key := range m.backend.Keys() {
+		if _, ok := key.(string); !ok {
+			continue
+		}
+		if strings.HasPrefix(key.(string), keyPrefix) {
+			m.backend.Remove(key)
+		}
+	}
+	m.mu.Unlock()
+
 	return nil
 }
 

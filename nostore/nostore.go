@@ -46,3 +46,7 @@ func (s *NoStore) BatchGet(ctx context.Context, keys []string) ([][]byte, error)
 func (s *NoStore) Delete(ctx context.Context, key string) error {
 	return nil
 }
+
+func (s *NoStore) DeletePrefix(ctx context.Context, keyPrefix string) error {
+	return nil
+}
