@@ -40,4 +40,7 @@ type Store interface {
 
 	// Delete removes a key and its associated value.
 	Delete(ctx context.Context, key string) error
+
+	// DeletePrefix removes keys with the given prefix.
+	DeletePrefix(ctx context.Context, keyPrefix string) error
 }
