@@ -189,7 +189,7 @@ func (c *RedisStore) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	conn := c.pool.Get()
 	defer conn.Close()
 
-	values, err := redis.Values(conn.Do("SCAN", 0, "MATCH", fmt.Sprintf("%s:*", keyPrefix)))
+	values, err := redis.Values(conn.Do("SCAN", 0, "MATCH", fmt.Sprintf("%s*", keyPrefix)))
 	if err != nil {
 		return err
 	}
