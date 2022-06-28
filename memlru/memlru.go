@@ -12,7 +12,7 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 )
 
-// var _ cachestore.Store = &MemLRU{}
+var _ cachestore.Store[any] = &MemLRU[any]{}
 
 // determines the minimum time between every TTL-based removal
 var lastExpiryCheckInterval = time.Second * 5

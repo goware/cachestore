@@ -7,7 +7,7 @@ import (
 	"github.com/goware/cachestore"
 )
 
-// var _ cachestore.Store = &NoStore{}
+var _ cachestore.Store[any] = &NoStore[any]{}
 
 type NoStore[V any] struct{}
 
