@@ -12,25 +12,25 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 )
 
-var _ cachestore.Store = &MemLRU{}
+// var _ cachestore.Store = &MemLRU{}
 
 // determines the minimum time between every TTL-based removal
 var lastExpiryCheckInterval = time.Second * 5
 
 const defaultLRUSize = 512
 
-type MemLRU struct {
+type MemLRU[V any] struct {
 	backend         *lru.Cache
 	expirationQueue *expirationQueue
 	lastExpiryCheck time.Time
 	mu              sync.RWMutex
 }
 
-func New() (cachestore.Store, error) {
-	return NewWithSize(defaultLRUSize)
+func New[V any]() (cachestore.Store[V], error) {
+	return NewWithSize[V](defaultLRUSize)
 }
 
-func NewWithSize(size int) (cachestore.Store, error) {
+func NewWithSize[V any](size int) (cachestore.Store[V], error) {
 	if size < 1 {
 		return nil, errors.New("size must be greater or equal to 1")
 	}
@@ -40,13 +40,15 @@ func NewWithSize(size int) (cachestore.Store, error) {
 		return nil, err
 	}
 
-	return &MemLRU{
+	memLRU := &MemLRU[V]{
 		backend:         backend,
 		expirationQueue: newExpirationQueue(),
-	}, nil
+	}
+
+	return memLRU, nil
 }
 
-func (m *MemLRU) Exists(ctx context.Context, key string) (bool, error) {
+func (m *MemLRU[V]) Exists(ctx context.Context, key string) (bool, error) {
 	m.mu.Lock()
 	m.removeExpiredKeys()
 	_, exists := m.backend.Peek(key)
@@ -54,7 +56,7 @@ func (m *MemLRU) Exists(ctx context.Context, key string) (bool, error) {
 	return exists, nil
 }
 
-func (m *MemLRU) Set(ctx context.Context, key string, value []byte) error {
+func (m *MemLRU[V]) Set(ctx context.Context, key string, value V) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.setKeyValue(ctx, key, value); err != nil {
@@ -63,7 +65,7 @@ func (m *MemLRU) Set(ctx context.Context, key string, value []byte) error {
 	return nil
 }
 
-func (m *MemLRU) SetEx(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+func (m *MemLRU[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -75,7 +77,7 @@ func (m *MemLRU) SetEx(ctx context.Context, key string, value []byte, ttl time.D
 	return nil
 }
 
-func (m *MemLRU) BatchSet(ctx context.Context, keys []string, values [][]byte) error {
+func (m *MemLRU[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
 	if len(keys) != len(values) {
 		return errors.New("keys and values are not the same length")
 	}
@@ -89,7 +91,7 @@ func (m *MemLRU) BatchSet(ctx context.Context, keys []string, values [][]byte) e
 	return nil
 }
 
-func (m *MemLRU) BatchSetEx(ctx context.Context, keys []string, values [][]byte, ttl time.Duration) error {
+func (m *MemLRU[V]) BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error {
 	if len(keys) != len(values) {
 		return errors.New("keys and values are not the same length")
 	}
@@ -105,7 +107,8 @@ func (m *MemLRU) BatchSetEx(ctx context.Context, keys []string, values [][]byte,
 	return nil
 }
 
-func (m *MemLRU) Get(ctx context.Context, key string) ([]byte, error) {
+func (m *MemLRU[V]) Get(ctx context.Context, key string) (V, error) {
+	var nilValue V
 	m.mu.Lock()
 	m.removeExpiredKeys()
 	v, ok := m.backend.Get(key)
@@ -113,19 +116,19 @@ func (m *MemLRU) Get(ctx context.Context, key string) ([]byte, error) {
 
 	if !ok {
 		// key not found, respond with no data
-		return nil, nil
+		return nilValue, nil
 	}
-	b, ok := v.([]byte)
+	b, ok := v.(V)
 	if !ok {
-		return nil, fmt.Errorf("memlru#Get: value of key %s is not a []byte", key)
+		return nilValue, fmt.Errorf("memlru#Get: value of key %s is not of type ", key)
 	}
 
 	return b, nil
 }
 
-func (m *MemLRU) BatchGet(ctx context.Context, keys []string) ([][]byte, error) {
-	vals := make([][]byte, 0, len(keys))
-
+func (m *MemLRU[V]) BatchGet(ctx context.Context, keys []string) ([]V, error) {
+	vals := make([]V, 0, len(keys))
+	var nilValue V
 	m.mu.Lock()
 	m.removeExpiredKeys()
 
@@ -133,11 +136,11 @@ func (m *MemLRU) BatchGet(ctx context.Context, keys []string) ([][]byte, error) 
 		v, ok := m.backend.Get(key)
 		if !ok {
 			// key not found, add nil
-			vals = append(vals, nil)
+			vals = append(vals, nilValue)
 			continue
 		}
 
-		b, ok := v.([]byte)
+		b, ok := v.(V)
 		if !ok {
 			return nil, fmt.Errorf("memlru#Get: value of key %s is not a []byte", key)
 		}
@@ -148,7 +151,7 @@ func (m *MemLRU) BatchGet(ctx context.Context, keys []string) ([][]byte, error) 
 	return vals, nil
 }
 
-func (m *MemLRU) Delete(ctx context.Context, key string) error {
+func (m *MemLRU[V]) Delete(ctx context.Context, key string) error {
 	m.mu.Lock()
 	present := m.backend.Remove(key)
 	m.mu.Unlock()
@@ -158,7 +161,7 @@ func (m *MemLRU) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (m *MemLRU) DeletePrefix(ctx context.Context, keyPrefix string) error {
+func (m *MemLRU[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -174,7 +177,7 @@ func (m *MemLRU) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	return nil
 }
 
-func (m *MemLRU) setKeyValue(ctx context.Context, key string, value []byte) error {
+func (m *MemLRU[V]) setKeyValue(ctx context.Context, key string, value V) error {
 	if len(key) > cachestore.MaxKeyLength {
 		return cachestore.ErrKeyLengthTooLong
 	}
@@ -185,7 +188,7 @@ func (m *MemLRU) setKeyValue(ctx context.Context, key string, value []byte) erro
 	return nil
 }
 
-func (m *MemLRU) removeExpiredKeys() {
+func (m *MemLRU[V]) removeExpiredKeys() {
 	now := time.Now()
 	if m.lastExpiryCheck.Add(lastExpiryCheckInterval).After(now) {
 		// another removal happened recently

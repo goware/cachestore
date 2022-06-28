@@ -13,30 +13,30 @@ var (
 	ErrInvalidKey       = errors.New("cachestore: invalid key")
 )
 
-type Store interface {
+type Store[V any] interface {
 	// Returns true if the key exists.
 	Exists(ctx context.Context, key string) (bool, error)
 
 	// Set stores the given value associated to the key.
-	Set(ctx context.Context, key string, value []byte) error
+	Set(ctx context.Context, key string, value V) error
 
 	// SetEx stores the given value associated to the key and sets an expiry ttl
 	// for that key.
-	SetEx(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	SetEx(ctx context.Context, key string, value V, ttl time.Duration) error
 
 	// BatchSet sets all the values associated to the given keys.
-	BatchSet(ctx context.Context, keys []string, values [][]byte) error
+	BatchSet(ctx context.Context, keys []string, values []V) error
 
 	// BatchSetEx sets all the values associated to the given keys and sets an
 	// expiry ttl for each key.
-	BatchSetEx(ctx context.Context, keys []string, values [][]byte, ttl time.Duration) error
+	BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error
 
 	// Get returns a stored value, or nil if the value is not assigned.
-	Get(ctx context.Context, key string) ([]byte, error)
+	Get(ctx context.Context, key string) (V, error)
 
 	// BatchGet returns the values of all the given keys at once. If any of the
 	// keys has no value, nil is returned instead.
-	BatchGet(ctx context.Context, keys []string) ([][]byte, error)
+	BatchGet(ctx context.Context, keys []string) ([]V, error)
 
 	// Delete removes a key and its associated value.
 	Delete(ctx context.Context, key string) error
