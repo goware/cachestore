@@ -2,7 +2,9 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
@@ -13,14 +15,14 @@ import (
 // const LongTime = time.Second * 24 * 60 * 60 * 30 // 1 month in seconds
 const LongTime = time.Second * 24 * 60 * 60 // 1 day in seconds
 
-var _ cachestore.Store = &RedisStore{}
+var _ cachestore.Store[any] = &RedisStore[any]{}
 
-type RedisStore struct {
+type RedisStore[V any] struct {
 	pool   *redis.Pool
 	keyTTL float64
 }
 
-func New(cfg *Config) (cachestore.Store, error) {
+func New[V any](cfg *Config) (cachestore.Store[V], error) {
 	if cfg.Host == "" {
 		return nil, errors.New("missing \"host\" parameter")
 	}
@@ -30,7 +32,7 @@ func New(cfg *Config) (cachestore.Store, error) {
 	if cfg.KeyTTL == 0 {
 		cfg.KeyTTL = LongTime // default setting
 	}
-	return createWithDialFunc(cfg, func() (redis.Conn, error) {
+	return createWithDialFunc[V](cfg, func() (redis.Conn, error) {
 		address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
 		c, err := redis.Dial("tcp", address, redis.DialDatabase(cfg.DBIndex))
@@ -38,13 +40,13 @@ func New(cfg *Config) (cachestore.Store, error) {
 	})
 }
 
-func NewWithKeyTTL(cfg *Config, keyTTL time.Duration) (cachestore.Store, error) {
+func NewWithKeyTTL[V any](cfg *Config, keyTTL time.Duration) (cachestore.Store[V], error) {
 	cfg.KeyTTL = keyTTL
-	return New(cfg)
+	return New[V](cfg)
 }
 
-func createWithDialFunc(cfg *Config, dial func() (redis.Conn, error)) (*RedisStore, error) {
-	return &RedisStore{
+func createWithDialFunc[V any](cfg *Config, dial func() (redis.Conn, error)) (*RedisStore[V], error) {
+	return &RedisStore[V]{
 		pool:   newPool(cfg, dial),
 		keyTTL: cfg.KeyTTL.Seconds(),
 	}, nil
@@ -74,12 +76,12 @@ func newPool(cfg *Config, dial func() (redis.Conn, error)) *redis.Pool {
 	}
 }
 
-func (c *RedisStore) Set(ctx context.Context, key string, value []byte) error {
+func (c *RedisStore[V]) Set(ctx context.Context, key string, value V) error {
 	// call SetEx passing default keyTTL
 	return c.SetEx(ctx, key, value, time.Duration(c.keyTTL)*time.Second)
 }
 
-func (c *RedisStore) SetEx(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+func (c *RedisStore[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
 	if len(key) > cachestore.MaxKeyLength {
 		return cachestore.ErrKeyLengthTooLong
 	}
@@ -95,15 +97,23 @@ func (c *RedisStore) SetEx(ctx context.Context, key string, value []byte, ttl ti
 
 	// TODO: handle timeout here, and return error if we hit it via ctx
 
-	_, err := conn.Do("SETEX", key, ttl.Seconds(), value)
-	return errors.Wrapf(err, "failed setting key %s", key)
+	data, err := serialize(value)
+	if err != nil {
+		return fmt.Errorf("unable to serialize object: %w", err)
+	}
+
+	_, err = conn.Do("SETEX", key, ttl.Seconds(), data)
+	if err != nil {
+		return fmt.Errorf("unable to set key %s: %w", key, err)
+	}
+	return nil
 }
 
-func (c *RedisStore) BatchSet(ctx context.Context, keys []string, values [][]byte) error {
+func (c *RedisStore[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
 	return c.BatchSetEx(ctx, keys, values, LongTime)
 }
 
-func (c *RedisStore) BatchSetEx(ctx context.Context, keys []string, values [][]byte, ttl time.Duration) error {
+func (c *RedisStore[V]) BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error {
 	if len(keys) != len(values) {
 		return errors.New("keys and values are not the same length")
 	}
@@ -115,7 +125,12 @@ func (c *RedisStore) BatchSetEx(ctx context.Context, keys []string, values [][]b
 	// the server. We could use MSET but it doesn't support TTL so we'd need to
 	// send one EXPIRE command per key anyway
 	for i, key := range keys {
-		err := conn.Send("SETEX", key, ttl.Seconds(), values[i])
+		data, err := serialize(values[i])
+		if err != nil {
+			return fmt.Errorf("unable to serialize object: %w", err)
+		}
+
+		err = conn.Send("SETEX", key, ttl.Seconds(), data)
 		if err != nil {
 			return errors.Wrap(err, "failed writing key")
 		}
@@ -132,37 +147,63 @@ func (c *RedisStore) BatchSetEx(ctx context.Context, keys []string, values [][]b
 	return errors.Wrap(err, "error encountered while batch-inserting value")
 }
 
-func (c *RedisStore) Get(ctx context.Context, key string) ([]byte, error) {
+func (c *RedisStore[V]) Get(ctx context.Context, key string) (V, error) {
 	conn := c.pool.Get()
 	defer conn.Close()
+
+	var out V
 
 	value, err := conn.Do("GET", key)
 	if err != nil {
-		return nil, errors.Wrap(err, "GET command failed")
+		return out, errors.Wrap(err, "GET command failed")
 	}
 
 	if value == nil {
-		return nil, nil
+		return out, nil
 	}
-	return redis.Bytes(value, nil)
+
+	data, err := redis.Bytes(value, nil)
+	if err != nil {
+		return out, err
+	}
+
+	out, err = deserialize[V](data)
+	if err != nil {
+		return out, err
+	}
+
+	return out, nil
 }
 
-func (c *RedisStore) BatchGet(ctx context.Context, keys []string) ([][]byte, error) {
+func (c *RedisStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, error) {
 	conn := c.pool.Get()
 	defer conn.Close()
 
-	// convert []string to []interface{}
+	// convert []string to []interface{} for redigo below
 	ks := make([]interface{}, len(keys))
 	for i, k := range keys {
 		ks[i] = k
 	}
 
-	// execute MGET and convert result to [][]byte
+	// execute MGET and convert result to []V
 	values, err := redis.ByteSlices(conn.Do("MGET", ks...))
-	return values, errors.Wrap(err, "MGET command failed")
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]V, len(values))
+
+	for i, value := range values {
+		out[i], err = deserialize[V](value)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return out, nil
 }
 
-func (c *RedisStore) Exists(ctx context.Context, key string) (bool, error) {
+func (c *RedisStore[V]) Exists(ctx context.Context, key string) (bool, error) {
 	conn := c.pool.Get()
 	defer conn.Close()
 
@@ -177,7 +218,7 @@ func (c *RedisStore) Exists(ctx context.Context, key string) (bool, error) {
 	return false, nil
 }
 
-func (c *RedisStore) Delete(ctx context.Context, key string) error {
+func (c *RedisStore[V]) Delete(ctx context.Context, key string) error {
 	conn := c.pool.Get()
 	defer conn.Close()
 
@@ -185,7 +226,7 @@ func (c *RedisStore) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-func (c *RedisStore) DeletePrefix(ctx context.Context, keyPrefix string) error {
+func (c *RedisStore[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	conn := c.pool.Get()
 	defer conn.Close()
 
@@ -230,15 +271,46 @@ func (c *RedisStore) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	return err
 }
 
-func (c *RedisStore) Do(cmd string, args ...interface{}) (interface{}, error) {
+func (c *RedisStore[V]) Do(cmd string, args ...interface{}) (interface{}, error) {
 	conn := c.pool.Get()
 	defer conn.Close()
 
 	return conn.Do(cmd, args...)
 }
 
-func (c *RedisStore) Close() error {
+func (c *RedisStore[V]) Close() error {
 	// redigo's pool.Close never returns an error, but perhaps it will in the
 	// future so it makes sense to follow their API
 	return c.pool.Close()
+}
+
+func serialize[V any](value V) ([]byte, error) {
+	// return the value directly if the type is a []byte or string,
+	// otherwise assume its json and unmarshal it
+	switch v := any(value).(type) {
+	case string:
+		return []byte(v), nil
+	case []byte:
+		return v, nil
+	default:
+		return json.Marshal(value)
+	}
+}
+
+func deserialize[V any](data []byte) (V, error) {
+	var out V
+
+	switch any(out).(type) {
+	case string:
+		outv := reflect.ValueOf(&out).Elem()
+		outv.SetString(string(data))
+		return out, nil
+	case []byte:
+		outv := reflect.ValueOf(&out).Elem()
+		outv.SetBytes(data)
+		return out, nil
+	default:
+		err := json.Unmarshal(data, &out)
+		return out, err
+	}
 }

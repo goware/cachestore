@@ -125,7 +125,7 @@ func TestExpirationQueue(t *testing.T) {
 func TestSetEx(t *testing.T) {
 	ctx := context.Background()
 
-	c, err := NewWithSize(50)
+	c, err := NewWithSize[[]byte](50)
 	assert.NoError(t, err)
 
 	{
