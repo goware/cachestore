@@ -36,8 +36,8 @@ func (s *NoStore[V]) BatchSetEx(ctx context.Context, keys []string, values []V, 
 }
 
 func (s *NoStore[V]) Get(ctx context.Context, key string) (V, error) {
-	var nilValue V
-	return nilValue, nil
+	var out V
+	return out, nil
 }
 
 func (s *NoStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, error) {

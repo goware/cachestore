@@ -64,7 +64,7 @@ func TestCacheString(t *testing.T) {
 	}
 }
 
-func TestCacheCustom(t *testing.T) {
+func TestCacheObject(t *testing.T) {
 
 	type custom struct {
 		value int

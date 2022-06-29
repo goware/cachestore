@@ -108,7 +108,7 @@ func (m *MemLRU[V]) BatchSetEx(ctx context.Context, keys []string, values []V, t
 }
 
 func (m *MemLRU[V]) Get(ctx context.Context, key string) (V, error) {
-	var nilValue V
+	var out V
 	m.mu.Lock()
 	m.removeExpiredKeys()
 	v, ok := m.backend.Get(key)
@@ -116,11 +116,11 @@ func (m *MemLRU[V]) Get(ctx context.Context, key string) (V, error) {
 
 	if !ok {
 		// key not found, respond with no data
-		return nilValue, nil
+		return out, nil
 	}
 	b, ok := v.(V)
 	if !ok {
-		return nilValue, fmt.Errorf("memlru#Get: value of key %s is not of type ", key)
+		return out, fmt.Errorf("memlru#Get: value of key %s is not of type ", key)
 	}
 
 	return b, nil
@@ -128,7 +128,7 @@ func (m *MemLRU[V]) Get(ctx context.Context, key string) (V, error) {
 
 func (m *MemLRU[V]) BatchGet(ctx context.Context, keys []string) ([]V, error) {
 	vals := make([]V, 0, len(keys))
-	var nilValue V
+	var out V
 	m.mu.Lock()
 	m.removeExpiredKeys()
 
@@ -136,7 +136,7 @@ func (m *MemLRU[V]) BatchGet(ctx context.Context, keys []string) ([]V, error) {
 		v, ok := m.backend.Get(key)
 		if !ok {
 			// key not found, add nil
-			vals = append(vals, nilValue)
+			vals = append(vals, out)
 			continue
 		}
 
