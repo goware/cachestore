@@ -81,6 +81,9 @@ func (m *MemLRU[V]) BatchSet(ctx context.Context, keys []string, values []V) err
 	if len(keys) != len(values) {
 		return errors.New("keys and values are not the same length")
 	}
+	if len(keys) == 0 {
+		return errors.New("no keys are passed")
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -94,6 +97,9 @@ func (m *MemLRU[V]) BatchSet(ctx context.Context, keys []string, values []V) err
 func (m *MemLRU[V]) BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error {
 	if len(keys) != len(values) {
 		return errors.New("keys and values are not the same length")
+	}
+	if len(keys) == 0 {
+		return errors.New("no keys are passed")
 	}
 
 	m.mu.Lock()
