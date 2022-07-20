@@ -117,6 +117,9 @@ func (c *RedisStore[V]) BatchSetEx(ctx context.Context, keys []string, values []
 	if len(keys) != len(values) {
 		return errors.New("keys and values are not the same length")
 	}
+	if len(keys) == 0 {
+		return errors.New("no keys are passed")
+	}
 
 	conn := c.pool.Get()
 	defer conn.Close()

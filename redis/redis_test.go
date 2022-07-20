@@ -95,3 +95,18 @@ func TestBasicBatchObjects(t *testing.T) {
 	require.Equal(t, in, out)
 
 }
+
+func TestBasicBatchObjectEmptyKeys(t *testing.T) {
+	ctx := context.Background()
+
+	cache, err := New[*obj](&Config{Host: "localhost"})
+	require.NoError(t, err)
+
+	var keys = []string{}
+
+	var in = []*obj{}
+
+	err = cache.BatchSet(ctx, keys, in)
+	require.Error(t, err)
+
+}
