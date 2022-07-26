@@ -43,4 +43,8 @@ type Store[V any] interface {
 
 	// DeletePrefix removes keys with the given prefix.
 	DeletePrefix(ctx context.Context, keyPrefix string) error
+
+	// ClearAll removes all data from the cache. Only use this during debugging,
+	// or testing, and never in practice.
+	ClearAll(ctx context.Context) error
 }

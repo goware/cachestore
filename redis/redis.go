@@ -285,17 +285,14 @@ func (c *RedisStore[V]) DeletePrefix(ctx context.Context, keyPrefix string) erro
 	return err
 }
 
-func (c *RedisStore[V]) Do(cmd string, args ...interface{}) (interface{}, error) {
-	conn := c.pool.Get()
-	defer conn.Close()
-
-	return conn.Do(cmd, args...)
+func (c *RedisStore[V]) ClearAll(ctx context.Context) error {
+	// With redis, we do not support ClearAll as its too destructive. For testing
+	// use the memlru if you want to Clear All.
+	return fmt.Errorf("cachestore/redis: unsupported")
 }
 
-func (c *RedisStore[V]) Close() error {
-	// redigo's pool.Close never returns an error, but perhaps it will in the
-	// future so it makes sense to follow their API
-	return c.pool.Close()
+func (c *RedisStore[V]) RedisConnPool() *redis.Pool {
+	return c.pool
 }
 
 func serialize[V any](value V) ([]byte, error) {

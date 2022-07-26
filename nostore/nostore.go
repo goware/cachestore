@@ -51,3 +51,7 @@ func (s *NoStore[V]) Delete(ctx context.Context, key string) error {
 func (s *NoStore[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	return nil
 }
+
+func (s *NoStore[V]) ClearAll(ctx context.Context) error {
+	return nil
+}

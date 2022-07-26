@@ -187,6 +187,11 @@ func (m *MemLRU[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	return nil
 }
 
+func (m *MemLRU[V]) ClearAll(ctx context.Context) error {
+	m.backend.Purge()
+	return nil
+}
+
 func (m *MemLRU[V]) setKeyValue(ctx context.Context, key string, value V) error {
 	if len(key) > cachestore.MaxKeyLength {
 		return cachestore.ErrKeyLengthTooLong
