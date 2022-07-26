@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCacheInt(t *testing.T) {
@@ -16,7 +18,7 @@ func TestCacheInt(t *testing.T) {
 		c.Set(ctx, fmt.Sprintf("i%d", i), i)
 	}
 	for i := 0; i < 10; i++ {
-		v, err := c.Get(ctx, fmt.Sprintf("i%d", i))
+		v, _, err := c.Get(ctx, fmt.Sprintf("i%d", i))
 		if err != nil {
 			t.Errorf("expected %d to be in cache", i)
 		}
@@ -28,7 +30,7 @@ func TestCacheInt(t *testing.T) {
 		c.Delete(ctx, fmt.Sprintf("i%d", i))
 	}
 	for i := 0; i < 10; i++ {
-		_, err := c.Get(ctx, fmt.Sprintf("i%d", i))
+		_, _, err := c.Get(ctx, fmt.Sprintf("i%d", i))
 		if err != nil {
 			t.Errorf("expected %d to not be in cache", i)
 		}
@@ -45,7 +47,7 @@ func TestCacheString(t *testing.T) {
 		c.Set(ctx, fmt.Sprintf("i%d", i), fmt.Sprintf("v%d", i))
 	}
 	for i := 0; i < 10; i++ {
-		v, err := c.Get(ctx, fmt.Sprintf("i%d", i))
+		v, _, err := c.Get(ctx, fmt.Sprintf("i%d", i))
 		if err != nil {
 			t.Errorf("expected %d to be in cache", i)
 		}
@@ -57,7 +59,7 @@ func TestCacheString(t *testing.T) {
 		c.Delete(ctx, fmt.Sprintf("i%d", i))
 	}
 	for i := 0; i < 10; i++ {
-		_, err := c.Get(ctx, fmt.Sprintf("i%d", i))
+		_, _, err := c.Get(ctx, fmt.Sprintf("i%d", i))
 		if err != nil {
 			t.Errorf("expected %d to not be in cache", i)
 		}
@@ -80,7 +82,7 @@ func TestCacheObject(t *testing.T) {
 		c.Set(ctx, fmt.Sprintf("i%d", i), custom{i, fmt.Sprintf("v%d", i)})
 	}
 	for i := 0; i < 10; i++ {
-		v, err := c.Get(ctx, fmt.Sprintf("i%d", i))
+		v, _, err := c.Get(ctx, fmt.Sprintf("i%d", i))
 		if err != nil {
 			t.Errorf("expected %d to be in cache", i)
 		}
@@ -96,9 +98,44 @@ func TestCacheObject(t *testing.T) {
 		c.Delete(ctx, fmt.Sprintf("i%d", i))
 	}
 	for i := 0; i < 10; i++ {
-		l, err := c.Get(ctx, fmt.Sprintf("i%d", i))
+		l, _, err := c.Get(ctx, fmt.Sprintf("i%d", i))
 		if err != nil {
 			t.Errorf("expected %v to not be in cache", l)
 		}
 	}
+}
+
+type obj struct {
+	A string
+	B string
+}
+
+func TestBasicBatchObjects(t *testing.T) {
+	cache, err := NewWithSize[*obj](50)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var keys = []string{
+		"test-obj3-a", "test-obj3-b",
+	}
+
+	var in = []*obj{
+		{A: "3a", B: "3a"},
+		{A: "3b", B: "3b"},
+	}
+
+	ctx := context.Background()
+	err = cache.BatchSet(ctx, keys, in)
+	require.NoError(t, err)
+
+	// adding some keys which will not exist
+	fetchKeys := []string{"no1"}
+	fetchKeys = append(fetchKeys, keys...)
+	fetchKeys = append(fetchKeys, []string{"no2", "no3"}...)
+
+	out, exists, err := cache.BatchGet(ctx, fetchKeys)
+	require.NoError(t, err)
+	require.Equal(t, []*obj{nil, in[0], in[1], nil, nil}, out)
+	require.Equal(t, []bool{false, true, true, false, false}, exists)
 }

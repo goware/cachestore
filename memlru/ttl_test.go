@@ -138,20 +138,22 @@ func TestSetEx(t *testing.T) {
 		}
 
 		for _, key := range keys {
-			buf, err := c.Get(ctx, key)
+			buf, exists, err := c.Get(ctx, key)
+			assert.False(t, exists)
 			assert.NoError(t, err)
 			assert.Nil(t, buf)
 
-			exists, err := c.Exists(ctx, key)
+			exists, err = c.Exists(ctx, key)
 			assert.NoError(t, err)
 			assert.False(t, exists)
 		}
 
-		values, err := c.BatchGet(ctx, keys)
+		values, batchExists, err := c.BatchGet(ctx, keys)
 		assert.NoError(t, err)
 
 		for i := range values {
 			assert.Nil(t, values[i])
+			assert.False(t, batchExists[i])
 		}
 	}
 
@@ -165,20 +167,22 @@ func TestSetEx(t *testing.T) {
 		}
 
 		for _, key := range keys {
-			buf, err := c.Get(ctx, key)
+			buf, exists, err := c.Get(ctx, key)
 			assert.NoError(t, err)
 			assert.NotNil(t, buf)
+			assert.True(t, exists)
 
-			exists, err := c.Exists(ctx, key)
+			exists, err = c.Exists(ctx, key)
 			assert.NoError(t, err)
 			assert.True(t, exists)
 		}
 
-		values, err := c.BatchGet(ctx, keys)
+		values, batchExists, err := c.BatchGet(ctx, keys)
 		assert.NoError(t, err)
 
 		for i := range values {
 			assert.NotNil(t, values[i])
+			assert.True(t, batchExists[i])
 		}
 	}
 }

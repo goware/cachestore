@@ -150,7 +150,7 @@ func (c *RedisStore[V]) BatchSetEx(ctx context.Context, keys []string, values []
 	return errors.Wrap(err, "error encountered while batch-inserting value")
 }
 
-func (c *RedisStore[V]) Get(ctx context.Context, key string) (V, error) {
+func (c *RedisStore[V]) Get(ctx context.Context, key string) (V, bool, error) {
 	conn := c.pool.Get()
 	defer conn.Close()
 
@@ -158,32 +158,32 @@ func (c *RedisStore[V]) Get(ctx context.Context, key string) (V, error) {
 
 	value, err := conn.Do("GET", key)
 	if err != nil {
-		return out, errors.Wrap(err, "GET command failed")
+		return out, false, errors.Wrap(err, "GET command failed")
 	}
-
 	if value == nil {
-		return out, nil
+		return out, false, nil
 	}
 
 	data, err := redis.Bytes(value, nil)
 	if err != nil {
-		return out, err
+		return out, false, err
 	}
 
 	out, err = deserialize[V](data)
 	if err != nil {
-		return out, err
+		return out, false, err
 	}
 
-	return out, nil
+	return out, true, nil
 }
 
-func (c *RedisStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, error) {
+func (c *RedisStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool, error) {
 	conn := c.pool.Get()
 	defer conn.Close()
 
 	// convert []string to []interface{} for redigo below
 	ks := make([]interface{}, len(keys))
+	oks := make([]bool, len(keys))
 	for i, k := range keys {
 		ks[i] = k
 	}
@@ -191,19 +191,30 @@ func (c *RedisStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, error
 	// execute MGET and convert result to []V
 	values, err := redis.ByteSlices(conn.Do("MGET", ks...))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
+	// we should always return the same number of values as keys requested,
+	// in the same order
+	if len(values) != len(keys) {
+		return nil, nil, fmt.Errorf("cachestore/redis: failed assertion")
+	}
 	out := make([]V, len(values))
 
 	for i, value := range values {
+		if len(value) == 0 {
+			oks[i] = false
+			continue
+		}
+
 		out[i], err = deserialize[V](value)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		oks[i] = true
 	}
 
-	return out, nil
+	return out, oks, nil
 }
 
 func (c *RedisStore[V]) Exists(ctx context.Context, key string) (bool, error) {

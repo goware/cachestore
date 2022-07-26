@@ -16,8 +16,9 @@ func TestBasicString(t *testing.T) {
 	err = cache.Set(ctx, "hi", "bye")
 	require.NoError(t, err)
 
-	value, err := cache.Get(ctx, "hi")
+	value, exists, err := cache.Get(ctx, "hi")
 	require.NoError(t, err)
+	require.True(t, exists)
 	require.Equal(t, "bye", value)
 }
 
@@ -30,8 +31,9 @@ func TestBasicBytes(t *testing.T) {
 	err = cache.Set(ctx, "test-bytes", []byte{1, 2, 3, 4})
 	require.NoError(t, err)
 
-	value, err := cache.Get(ctx, "test-bytes")
+	value, exists, err := cache.Get(ctx, "test-bytes")
 	require.NoError(t, err)
+	require.True(t, exists)
 	require.Equal(t, []byte{1, 2, 3, 4}, value)
 }
 
@@ -51,7 +53,8 @@ func TestBasicObject(t *testing.T) {
 	err = cache.Set(ctx, "test-obj", in)
 	require.NoError(t, err)
 
-	out, err := cache.Get(ctx, "test-obj")
+	out, exists, err := cache.Get(ctx, "test-obj")
+	require.True(t, exists)
 	require.NoError(t, err)
 	require.Equal(t, in, out)
 }
@@ -67,7 +70,8 @@ func TestBasicObject2(t *testing.T) {
 	err = cache.Set(ctx, "test-obj2", in)
 	require.NoError(t, err)
 
-	out, err := cache.Get(ctx, "test-obj2")
+	out, exists, err := cache.Get(ctx, "test-obj2")
+	require.True(t, exists)
 	require.NoError(t, err)
 	require.Equal(t, in, out)
 }
@@ -90,10 +94,15 @@ func TestBasicBatchObjects(t *testing.T) {
 	err = cache.BatchSet(ctx, keys, in)
 	require.NoError(t, err)
 
-	out, err := cache.BatchGet(ctx, keys)
-	require.NoError(t, err)
-	require.Equal(t, in, out)
+	// adding some keys which will not exist
+	fetchKeys := []string{"no1"}
+	fetchKeys = append(fetchKeys, keys...)
+	fetchKeys = append(fetchKeys, []string{"no2", "no3"}...)
 
+	out, exists, err := cache.BatchGet(ctx, fetchKeys)
+	require.NoError(t, err)
+	require.Equal(t, []*obj{nil, in[0], in[1], nil, nil}, out)
+	require.Equal(t, []bool{false, true, true, false, false}, exists)
 }
 
 func TestBasicBatchObjectEmptyKeys(t *testing.T) {

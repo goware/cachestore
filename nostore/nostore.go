@@ -35,13 +35,13 @@ func (s *NoStore[V]) BatchSetEx(ctx context.Context, keys []string, values []V, 
 	return nil
 }
 
-func (s *NoStore[V]) Get(ctx context.Context, key string) (V, error) {
+func (s *NoStore[V]) Get(ctx context.Context, key string) (V, bool, error) {
 	var out V
-	return out, nil
+	return out, false, nil
 }
 
-func (s *NoStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, error) {
-	return nil, nil
+func (s *NoStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool, error) {
+	return nil, nil, nil
 }
 
 func (s *NoStore[V]) Delete(ctx context.Context, key string) error {

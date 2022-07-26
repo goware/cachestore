@@ -32,11 +32,11 @@ type Store[V any] interface {
 	BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error
 
 	// Get returns a stored value, or nil if the value is not assigned.
-	Get(ctx context.Context, key string) (V, error)
+	Get(ctx context.Context, key string) (V, bool, error)
 
 	// BatchGet returns the values of all the given keys at once. If any of the
 	// keys has no value, nil is returned instead.
-	BatchGet(ctx context.Context, keys []string) ([]V, error)
+	BatchGet(ctx context.Context, keys []string) ([]V, []bool, error)
 
 	// Delete removes a key and its associated value.
 	Delete(ctx context.Context, key string) error

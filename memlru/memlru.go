@@ -113,7 +113,7 @@ func (m *MemLRU[V]) BatchSetEx(ctx context.Context, keys []string, values []V, t
 	return nil
 }
 
-func (m *MemLRU[V]) Get(ctx context.Context, key string) (V, error) {
+func (m *MemLRU[V]) Get(ctx context.Context, key string) (V, bool, error) {
 	var out V
 	m.mu.Lock()
 	m.removeExpiredKeys()
@@ -122,18 +122,19 @@ func (m *MemLRU[V]) Get(ctx context.Context, key string) (V, error) {
 
 	if !ok {
 		// key not found, respond with no data
-		return out, nil
+		return out, false, nil
 	}
 	b, ok := v.(V)
 	if !ok {
-		return out, fmt.Errorf("memlru#Get: value of key %s is not of type ", key)
+		return out, false, fmt.Errorf("memlru#Get: value of key %s is not of type ", key)
 	}
 
-	return b, nil
+	return b, true, nil
 }
 
-func (m *MemLRU[V]) BatchGet(ctx context.Context, keys []string) ([]V, error) {
+func (m *MemLRU[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool, error) {
 	vals := make([]V, 0, len(keys))
+	oks := make([]bool, 0, len(keys))
 	var out V
 	m.mu.Lock()
 	m.removeExpiredKeys()
@@ -141,20 +142,23 @@ func (m *MemLRU[V]) BatchGet(ctx context.Context, keys []string) ([]V, error) {
 	for _, key := range keys {
 		v, ok := m.backend.Get(key)
 		if !ok {
-			// key not found, add nil
+			// key not found, add empty/default value
 			vals = append(vals, out)
+			oks = append(oks, false)
 			continue
 		}
 
 		b, ok := v.(V)
 		if !ok {
-			return nil, fmt.Errorf("memlru#Get: value of key %s is not a []byte", key)
+			m.mu.Unlock()
+			return nil, nil, fmt.Errorf("memlru#Get: value of key %s is not a []byte", key)
 		}
 		vals = append(vals, b)
+		oks = append(oks, true)
 	}
 	m.mu.Unlock()
 
-	return vals, nil
+	return vals, oks, nil
 }
 
 func (m *MemLRU[V]) Delete(ctx context.Context, key string) error {
