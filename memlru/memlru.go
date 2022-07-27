@@ -20,17 +20,18 @@ var lastExpiryCheckInterval = time.Second * 5
 const defaultLRUSize = 512
 
 type MemLRU[V any] struct {
+	options         cachestore.StoreOptions
 	backend         *lru.Cache
 	expirationQueue *expirationQueue
 	lastExpiryCheck time.Time
 	mu              sync.RWMutex
 }
 
-func New[V any]() (cachestore.Store[V], error) {
-	return NewWithSize[V](defaultLRUSize)
+func New[V any](opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
+	return NewWithSize[V](defaultLRUSize, opts...)
 }
 
-func NewWithSize[V any](size int) (cachestore.Store[V], error) {
+func NewWithSize[V any](size int, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
 	if size < 1 {
 		return nil, errors.New("size must be greater or equal to 1")
 	}
@@ -41,6 +42,7 @@ func NewWithSize[V any](size int) (cachestore.Store[V], error) {
 	}
 
 	memLRU := &MemLRU[V]{
+		options:         cachestore.ApplyOptions(opts...),
 		backend:         backend,
 		expirationQueue: newExpirationQueue(),
 	}
@@ -57,12 +59,7 @@ func (m *MemLRU[V]) Exists(ctx context.Context, key string) (bool, error) {
 }
 
 func (m *MemLRU[V]) Set(ctx context.Context, key string, value V) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if err := m.setKeyValue(ctx, key, value); err != nil {
-		return err
-	}
-	return nil
+	return m.SetEx(ctx, key, value, m.options.DefaultKeyExpiry)
 }
 
 func (m *MemLRU[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
@@ -72,26 +69,15 @@ func (m *MemLRU[V]) SetEx(ctx context.Context, key string, value V, ttl time.Dur
 	if err := m.setKeyValue(ctx, key, value); err != nil {
 		return err
 	}
+	if ttl > 0 {
+		m.expirationQueue.Push(key, ttl)
+	}
 
-	m.expirationQueue.Push(key, ttl)
 	return nil
 }
 
 func (m *MemLRU[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
-	if len(keys) != len(values) {
-		return errors.New("keys and values are not the same length")
-	}
-	if len(keys) == 0 {
-		return errors.New("no keys are passed")
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	for i, key := range keys {
-		m.backend.Add(key, values[i])
-	}
-	return nil
+	return m.BatchSetEx(ctx, keys, values, m.options.DefaultKeyExpiry)
 }
 
 func (m *MemLRU[V]) BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error {
@@ -107,7 +93,9 @@ func (m *MemLRU[V]) BatchSetEx(ctx context.Context, keys []string, values []V, t
 
 	for i, key := range keys {
 		m.backend.Add(key, values[i])
-		m.expirationQueue.Push(key, ttl) // TODO: probably a more efficient way to do this batch push
+		if ttl > 0 {
+			m.expirationQueue.Push(key, ttl) // TODO: probably a more efficient way to do this batch push
+		}
 	}
 
 	return nil

@@ -132,28 +132,30 @@ func TestSetEx(t *testing.T) {
 		keys := []string{}
 		for i := 0; i < 20; i++ {
 			key := fmt.Sprintf("key-%d", i)
-			err := c.SetEx(ctx, key, []byte("a"), time.Duration(0)) // a key that expires immediately
+
+			// SetEx with time 0 is the same as just a Set, because there is no expiry time
+			// aka, the key doesn't expire.
+			err := c.SetEx(ctx, key, []byte("a"), time.Duration(0))
 			assert.NoError(t, err)
 			keys = append(keys, key)
 		}
 
 		for _, key := range keys {
 			buf, exists, err := c.Get(ctx, key)
-			assert.False(t, exists)
+			assert.True(t, exists)
 			assert.NoError(t, err)
-			assert.Nil(t, buf)
+			assert.NotNil(t, buf)
 
 			exists, err = c.Exists(ctx, key)
 			assert.NoError(t, err)
-			assert.False(t, exists)
+			assert.True(t, exists)
 		}
 
 		values, batchExists, err := c.BatchGet(ctx, keys)
 		assert.NoError(t, err)
-
 		for i := range values {
-			assert.Nil(t, values[i])
-			assert.False(t, batchExists[i])
+			assert.NotNil(t, values[i])
+			assert.True(t, batchExists[i])
 		}
 	}
 

@@ -12,17 +12,16 @@ import (
 	"github.com/pkg/errors"
 )
 
-// const LongTime = time.Second * 24 * 60 * 60 * 30 // 1 month in seconds
 const LongTime = time.Second * 24 * 60 * 60 // 1 day in seconds
 
 var _ cachestore.Store[any] = &RedisStore[any]{}
 
 type RedisStore[V any] struct {
-	pool   *redis.Pool
-	keyTTL float64
+	options cachestore.StoreOptions
+	pool    *redis.Pool
 }
 
-func New[V any](cfg *Config) (cachestore.Store[V], error) {
+func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
 	if cfg.Host == "" {
 		return nil, errors.New("missing \"host\" parameter")
 	}
@@ -32,23 +31,29 @@ func New[V any](cfg *Config) (cachestore.Store[V], error) {
 	if cfg.KeyTTL == 0 {
 		cfg.KeyTTL = LongTime // default setting
 	}
-	return createWithDialFunc[V](cfg, func() (redis.Conn, error) {
+
+	// Create store and connect to backend
+	store, err := createWithDialFunc[V](cfg, func() (redis.Conn, error) {
 		address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-
 		c, err := redis.Dial("tcp", address, redis.DialDatabase(cfg.DBIndex))
-		return c, errors.Wrapf(err, "unable to dial redis host %v", address) // errors.Wrap(nil, ...) returns nil
+		return c, errors.Wrapf(err, "unable to dial redis host %v", address)
 	})
-}
+	if err != nil {
+		return nil, err
+	}
 
-func NewWithKeyTTL[V any](cfg *Config, keyTTL time.Duration) (cachestore.Store[V], error) {
-	cfg.KeyTTL = keyTTL
-	return New[V](cfg)
+	// Apply store options
+	store.options = cachestore.ApplyOptions(opts...)
+	if store.options.DefaultKeyExpiry == 0 && cfg.KeyTTL > 0 {
+		store.options.DefaultKeyExpiry = cfg.KeyTTL
+	}
+
+	return store, nil
 }
 
 func createWithDialFunc[V any](cfg *Config, dial func() (redis.Conn, error)) (*RedisStore[V], error) {
 	return &RedisStore[V]{
-		pool:   newPool(cfg, dial),
-		keyTTL: cfg.KeyTTL.Seconds(),
+		pool: newPool(cfg, dial),
 	}, nil
 }
 
@@ -78,7 +83,7 @@ func newPool(cfg *Config, dial func() (redis.Conn, error)) *redis.Pool {
 
 func (c *RedisStore[V]) Set(ctx context.Context, key string, value V) error {
 	// call SetEx passing default keyTTL
-	return c.SetEx(ctx, key, value, time.Duration(c.keyTTL)*time.Second)
+	return c.SetEx(ctx, key, value, c.options.DefaultKeyExpiry)
 }
 
 func (c *RedisStore[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
@@ -102,7 +107,11 @@ func (c *RedisStore[V]) SetEx(ctx context.Context, key string, value V, ttl time
 		return fmt.Errorf("unable to serialize object: %w", err)
 	}
 
-	_, err = conn.Do("SETEX", key, ttl.Seconds(), data)
+	if ttl > 0 {
+		_, err = conn.Do("SETEX", key, ttl.Seconds(), data)
+	} else {
+		_, err = conn.Do("SET", key, data)
+	}
 	if err != nil {
 		return fmt.Errorf("unable to set key %s: %w", key, err)
 	}
@@ -133,7 +142,11 @@ func (c *RedisStore[V]) BatchSetEx(ctx context.Context, keys []string, values []
 			return fmt.Errorf("unable to serialize object: %w", err)
 		}
 
-		err = conn.Send("SETEX", key, ttl.Seconds(), data)
+		if ttl > 0 {
+			err = conn.Send("SETEX", key, ttl.Seconds(), data)
+		} else {
+			err = conn.Send("SET", key, data)
+		}
 		if err != nil {
 			return errors.Wrap(err, "failed writing key")
 		}

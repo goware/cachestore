@@ -3,15 +3,21 @@ package redis
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/goware/cachestore"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBasicString(t *testing.T) {
 	ctx := context.Background()
 
-	cache, err := New[string](&Config{Host: "localhost"})
+	cache, err := New[string](&Config{Host: "localhost"}, cachestore.WithDefaultKeyExpiry(10*time.Second))
 	require.NoError(t, err)
+
+	rcache, ok := cache.(*RedisStore[string])
+	require.True(t, ok)
+	require.True(t, rcache.options.DefaultKeyExpiry.Seconds() == 10)
 
 	err = cache.Set(ctx, "hi", "bye")
 	require.NoError(t, err)
@@ -117,5 +123,40 @@ func TestBasicBatchObjectEmptyKeys(t *testing.T) {
 
 	err = cache.BatchSet(ctx, keys, in)
 	require.Error(t, err)
+}
 
+func TestExpiryOptions(t *testing.T) {
+	ctx := context.Background()
+
+	cache, err := New[string](&Config{Host: "localhost"}, cachestore.WithDefaultKeyExpiry(1*time.Second))
+	// cache, err := New[string](&Config{Host: "localhost", KeyTTL: 1 * time.Second})
+	require.NoError(t, err)
+
+	rcache, ok := cache.(*RedisStore[string])
+	require.True(t, ok)
+	require.True(t, rcache.options.DefaultKeyExpiry.Seconds() == 1)
+
+	err = cache.Set(ctx, "hi", "bye")
+	require.NoError(t, err)
+
+	err = cache.SetEx(ctx, "another", "longer", 10*time.Second)
+	require.NoError(t, err)
+
+	value, exists, err := cache.Get(ctx, "hi")
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.Equal(t, "bye", value)
+
+	// pause to wait for expiry..
+	time.Sleep(2 * time.Second)
+
+	value, exists, err = cache.Get(ctx, "hi")
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.Equal(t, "", value)
+
+	value, exists, err = cache.Get(ctx, "another")
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.Equal(t, "longer", value)
 }
