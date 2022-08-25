@@ -3,13 +3,13 @@ package redis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
 	"github.com/goware/cachestore"
-	"github.com/pkg/errors"
 )
 
 const LongTime = time.Second * 24 * 60 * 60 // 1 day in seconds
@@ -36,7 +36,10 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 	store, err := createWithDialFunc[V](cfg, func() (redis.Conn, error) {
 		address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 		c, err := redis.Dial("tcp", address, redis.DialDatabase(cfg.DBIndex))
-		return c, errors.Wrapf(err, "unable to dial redis host %v", address)
+		if err != nil {
+			return nil, fmt.Errorf("unable to dial redis host %v: %w", address, err)
+		}
+		return c, nil
 	})
 	if err != nil {
 		return nil, err
@@ -76,7 +79,10 @@ func newPool(cfg *Config, dial func() (redis.Conn, error)) *redis.Pool {
 		Dial: dial,
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
 			_, err := c.Do("PING")
-			return errors.Wrap(err, "PING failed")
+			if err != nil {
+				return fmt.Errorf("PING failed: %w", err)
+			}
+			return nil
 		},
 	}
 }
@@ -148,19 +154,22 @@ func (c *RedisStore[V]) BatchSetEx(ctx context.Context, keys []string, values []
 			err = conn.Send("SET", key, data)
 		}
 		if err != nil {
-			return errors.Wrap(err, "failed writing key")
+			return fmt.Errorf("failed writing key: %w", err)
 		}
 	}
 
 	// send all commands
 	err := conn.Flush()
 	if err != nil {
-		return errors.Wrap(err, "error encountered when sending commands to server")
+		return fmt.Errorf("error encountered when sending commands to server: %w", err)
 	}
 
 	// and wait for the reply
 	_, err = conn.Receive()
-	return errors.Wrap(err, "error encountered while batch-inserting value")
+	if err != nil {
+		return fmt.Errorf("error encountered while batch-inserting value: %w", err)
+	}
+	return nil
 }
 
 func (c *RedisStore[V]) Get(ctx context.Context, key string) (V, bool, error) {
@@ -171,7 +180,7 @@ func (c *RedisStore[V]) Get(ctx context.Context, key string) (V, bool, error) {
 
 	value, err := conn.Do("GET", key)
 	if err != nil {
-		return out, false, errors.Wrap(err, "GET command failed")
+		return out, false, fmt.Errorf("GET command failed: %w", err)
 	}
 	if value == nil {
 		return out, false, nil
@@ -236,7 +245,7 @@ func (c *RedisStore[V]) Exists(ctx context.Context, key string) (bool, error) {
 
 	value, err := redis.Bytes(conn.Do("EXISTS", key))
 	if err != nil {
-		return false, errors.Wrap(err, "EXISTS command failed")
+		return false, fmt.Errorf("EXISTS command failed: %w", err)
 	}
 
 	if len(value) > 0 && value[0] == '1' {
