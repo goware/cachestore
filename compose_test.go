@@ -75,7 +75,13 @@ func TestCompose(t *testing.T) {
 
 	// Batch get, etc.
 	{
-		// first lets delete some random keys in both sets
+		// first lets normalize all the values again
+		for i := 0; i < n; i++ {
+			err := cs.Set(ctx, fmt.Sprintf("foo:%d", i), fmt.Sprintf("z%d", i))
+			require.NoError(t, err)
+		}
+
+		// then lets delete some random keys in both sets
 		// so when we query we should get all values
 		m1s.Delete(ctx, "foo:2")
 		m1s.Delete(ctx, "foo:5")
@@ -85,14 +91,15 @@ func TestCompose(t *testing.T) {
 		m2s.Delete(ctx, "foo:10")
 
 		vals, exists, err := cs.BatchGet(ctx, []string{
-			"foo:1", "foo:2", "foo:3", "foo:4", "foo:5", "foo:6", "foo:7", "foo:8", "foo:9", "foo:10",
+			"foo:0", "foo:1", "foo:2", "foo:3", "foo:4", "foo:5", "foo:6", "foo:7", "foo:8", "foo:9", "foo:10",
 		})
 		require.NoError(t, err)
 		for _, e := range exists {
 			require.True(t, e)
 		}
-		for _, v := range vals {
+		for i, v := range vals {
 			require.NotEmpty(t, v)
+			require.Equal(t, fmt.Sprintf("z%d", i), v)
 		}
 	}
 
