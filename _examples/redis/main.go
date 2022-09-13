@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	store, err := redis.New(&redis.Config{
+	store, err := redis.New[string](&redis.Config{
 		Host: "localhost",
 		Port: 6379,
 	})
@@ -19,7 +19,7 @@ func main() {
 	ctx := context.Background()
 
 	for i := 0; i < 100; i++ {
-		err = store.Set(ctx, fmt.Sprintf("foo:%d", i), []byte(fmt.Sprintf("value-%d", i)))
+		err = store.Set(ctx, fmt.Sprintf("foo:%d", i), fmt.Sprintf("value-%d", i))
 		if err != nil {
 			panic(err)
 		}
