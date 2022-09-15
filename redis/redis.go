@@ -51,6 +51,12 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 		store.options.DefaultKeyExpiry = cfg.KeyTTL
 	}
 
+	// Set default key expiry for a long time on redis always. This is how we ensure
+	// the cache will always function as a LRU.
+	if store.options.DefaultKeyExpiry == 0 {
+		store.options.DefaultKeyExpiry = LongTime
+	}
+
 	return store, nil
 }
 
@@ -125,7 +131,7 @@ func (c *RedisStore[V]) SetEx(ctx context.Context, key string, value V, ttl time
 }
 
 func (c *RedisStore[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
-	return c.BatchSetEx(ctx, keys, values, LongTime)
+	return c.BatchSetEx(ctx, keys, values, c.options.DefaultKeyExpiry)
 }
 
 func (c *RedisStore[V]) BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error {
