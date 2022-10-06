@@ -10,6 +10,7 @@ import (
 
 	"github.com/gomodule/redigo/redis"
 	"github.com/goware/cachestore"
+	"github.com/goware/cachestore/nostore"
 )
 
 const LongTime = time.Second * 24 * 60 * 60 // 1 day in seconds
@@ -22,8 +23,12 @@ type RedisStore[V any] struct {
 }
 
 func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
+	if !cfg.Enabled {
+		return nostore.New[V]() // noop
+	}
+
 	if cfg.Host == "" {
-		return nil, errors.New("missing \"host\" parameter")
+		return nil, errors.New("cachestore/redis: missing \"host\" parameter")
 	}
 	if cfg.Port < 1 {
 		cfg.Port = 6379

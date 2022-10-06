@@ -3,6 +3,7 @@ package redis
 import "time"
 
 type Config struct {
+	Enabled   bool          `toml:"enabled"`
 	Host      string        `toml:"host"`
 	Port      uint16        `toml:"port"`
 	DBIndex   int           `toml:"db_index"`   // default 0

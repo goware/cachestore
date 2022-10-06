@@ -9,8 +9,9 @@ import (
 
 func main() {
 	store, err := redis.New[string](&redis.Config{
-		Host: "localhost",
-		Port: 6379,
+		Enabled: true,
+		Host:    "localhost",
+		Port:    6379,
 	})
 	if err != nil {
 		panic(err)

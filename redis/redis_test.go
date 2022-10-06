@@ -12,7 +12,7 @@ import (
 func TestBasicString(t *testing.T) {
 	ctx := context.Background()
 
-	cache, err := New[string](&Config{Host: "localhost"}, cachestore.WithDefaultKeyExpiry(10*time.Second))
+	cache, err := New[string](&Config{Enabled: true, Host: "localhost"}, cachestore.WithDefaultKeyExpiry(10*time.Second))
 	require.NoError(t, err)
 
 	rcache, ok := cache.(*RedisStore[string])
@@ -31,7 +31,7 @@ func TestBasicString(t *testing.T) {
 func TestBasicBytes(t *testing.T) {
 	ctx := context.Background()
 
-	cache, err := New[[]byte](&Config{Host: "localhost"})
+	cache, err := New[[]byte](&Config{Enabled: true, Host: "localhost"})
 	require.NoError(t, err)
 
 	err = cache.Set(ctx, "test-bytes", []byte{1, 2, 3, 4})
@@ -51,7 +51,7 @@ type obj struct {
 func TestBasicObject(t *testing.T) {
 	ctx := context.Background()
 
-	cache, err := New[obj](&Config{Host: "localhost"})
+	cache, err := New[obj](&Config{Enabled: true, Host: "localhost"})
 	require.NoError(t, err)
 
 	var in = obj{A: "hi", B: "bye"}
@@ -68,7 +68,7 @@ func TestBasicObject(t *testing.T) {
 func TestBasicObject2(t *testing.T) {
 	ctx := context.Background()
 
-	cache, err := New[*obj](&Config{Host: "localhost"})
+	cache, err := New[*obj](&Config{Enabled: true, Host: "localhost"})
 	require.NoError(t, err)
 
 	var in = &obj{A: "hi", B: "bye"}
@@ -85,7 +85,7 @@ func TestBasicObject2(t *testing.T) {
 func TestBasicBatchObjects(t *testing.T) {
 	ctx := context.Background()
 
-	cache, err := New[*obj](&Config{Host: "localhost"})
+	cache, err := New[*obj](&Config{Enabled: true, Host: "localhost"})
 	require.NoError(t, err)
 
 	var keys = []string{
@@ -114,7 +114,7 @@ func TestBasicBatchObjects(t *testing.T) {
 func TestBasicBatchObjectEmptyKeys(t *testing.T) {
 	ctx := context.Background()
 
-	cache, err := New[*obj](&Config{Host: "localhost"})
+	cache, err := New[*obj](&Config{Enabled: true, Host: "localhost"})
 	require.NoError(t, err)
 
 	var keys = []string{}
@@ -128,7 +128,7 @@ func TestBasicBatchObjectEmptyKeys(t *testing.T) {
 func TestExpiryOptions(t *testing.T) {
 	ctx := context.Background()
 
-	cache, err := New[string](&Config{Host: "localhost"}, cachestore.WithDefaultKeyExpiry(1*time.Second))
+	cache, err := New[string](&Config{Enabled: true, Host: "localhost"}, cachestore.WithDefaultKeyExpiry(1*time.Second))
 	// cache, err := New[string](&Config{Host: "localhost", KeyTTL: 1 * time.Second})
 	require.NoError(t, err)
 
