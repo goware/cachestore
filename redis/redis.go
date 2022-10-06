@@ -10,7 +10,6 @@ import (
 
 	"github.com/gomodule/redigo/redis"
 	"github.com/goware/cachestore"
-	"github.com/goware/cachestore/nostore"
 )
 
 const LongTime = time.Second * 24 * 60 * 60 // 1 day in seconds
@@ -24,7 +23,7 @@ type RedisStore[V any] struct {
 
 func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
 	if !cfg.Enabled {
-		return nostore.New[V]() // noop
+		return nil, errors.New("cachestore/redis: attempting to create store while config.Enabled is false")
 	}
 
 	if cfg.Host == "" {
