@@ -288,7 +288,7 @@ func (c *RedisStore[V]) DeletePrefix(ctx context.Context, keyPrefix string) erro
 
 	cursor := fmt.Sprintf("%s", values[0])
 	for cursor != "0" {
-		values, err = redis.Values(conn.Do("SCAN", cursor, "MATCH", fmt.Sprintf("%s:*", keyPrefix)))
+		values, err = redis.Values(conn.Do("SCAN", cursor, "MATCH", fmt.Sprintf("%s*", keyPrefix)))
 		if err != nil {
 			return err
 		}
