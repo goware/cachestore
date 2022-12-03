@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/goware/cachestore"
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 var _ cachestore.Store[any] = &MemLRU[any]{}
@@ -21,7 +21,7 @@ const defaultLRUSize = 512
 
 type MemLRU[V any] struct {
 	options         cachestore.StoreOptions
-	backend         *lru.Cache
+	backend         *lru.Cache[string, any]
 	expirationQueue *expirationQueue
 	lastExpiryCheck time.Time
 	mu              sync.RWMutex
@@ -36,7 +36,7 @@ func NewWithSize[V any](size int, opts ...cachestore.StoreOptions) (cachestore.S
 		return nil, errors.New("size must be greater or equal to 1")
 	}
 
-	backend, err := lru.New(size)
+	backend, err := lru.New[string, any](size)
 	if err != nil {
 		return nil, err
 	}
@@ -164,10 +164,7 @@ func (m *MemLRU[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	defer m.mu.Unlock()
 
 	for _, key := range m.backend.Keys() {
-		if _, ok := key.(string); !ok {
-			continue
-		}
-		if strings.HasPrefix(key.(string), keyPrefix) {
+		if strings.HasPrefix(key, keyPrefix) {
 			m.backend.Remove(key)
 		}
 	}

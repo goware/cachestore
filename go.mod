@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/gomodule/redigo v1.8.8
-	github.com/hashicorp/golang-lru v0.5.4
+	github.com/hashicorp/golang-lru/v2 v2.0.1
 	github.com/stretchr/testify v1.7.1
 )
 
