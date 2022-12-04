@@ -3,7 +3,6 @@ package memlru
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +20,7 @@ const defaultLRUSize = 512
 
 type MemLRU[V any] struct {
 	options         cachestore.StoreOptions
-	backend         *lru.Cache[string, any]
+	backend         *lru.Cache[string, V]
 	expirationQueue *expirationQueue
 	lastExpiryCheck time.Time
 	mu              sync.RWMutex
@@ -36,7 +35,7 @@ func NewWithSize[V any](size int, opts ...cachestore.StoreOptions) (cachestore.S
 		return nil, errors.New("size must be greater or equal to 1")
 	}
 
-	backend, err := lru.New[string, any](size)
+	backend, err := lru.New[string, V](size)
 	if err != nil {
 		return nil, err
 	}
@@ -112,12 +111,8 @@ func (m *MemLRU[V]) Get(ctx context.Context, key string) (V, bool, error) {
 		// key not found, respond with no data
 		return out, false, nil
 	}
-	b, ok := v.(V)
-	if !ok {
-		return out, false, fmt.Errorf("memlru#Get: value of key %s is not of type ", key)
-	}
 
-	return b, true, nil
+	return v, true, nil
 }
 
 func (m *MemLRU[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool, error) {
@@ -136,12 +131,7 @@ func (m *MemLRU[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool, e
 			continue
 		}
 
-		b, ok := v.(V)
-		if !ok {
-			m.mu.Unlock()
-			return nil, nil, fmt.Errorf("memlru#Get: value of key %s is not a []byte", key)
-		}
-		vals = append(vals, b)
+		vals = append(vals, v)
 		oks = append(oks, true)
 	}
 	m.mu.Unlock()
