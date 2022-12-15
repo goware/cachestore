@@ -19,19 +19,21 @@ func main() {
 
 	ctx := context.Background()
 
-	for i := 0; i < 100; i++ {
-		err = store.Set(ctx, fmt.Sprintf("foo:%d", i), fmt.Sprintf("value-%d", i))
+	{
+		for i := 0; i < 100; i++ {
+			err = store.Set(ctx, fmt.Sprintf("foo:%d", i), fmt.Sprintf("value-%d", i))
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		err = store.DeletePrefix(ctx, "foo")
 		if err != nil {
 			panic(err)
 		}
+
+		fmt.Println("done.")
+		fmt.Println("")
 	}
-
-	err = store.DeletePrefix(ctx, "foo")
-
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("ok")
 
 }
