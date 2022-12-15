@@ -50,5 +50,5 @@ type Store[V any] interface {
 }
 
 type Backend interface {
-	Config() any
+	Apply(*StoreOptions)
 }

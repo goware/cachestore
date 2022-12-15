@@ -4,11 +4,15 @@ import "time"
 
 func ApplyOptions(opts ...StoreOptions) StoreOptions {
 	if len(opts) == 0 {
-		return StoreOptions{}
+		return StoreOptions{
+			Apply: func(opts *StoreOptions) {},
+		}
 	}
 	so := StoreOptions{}
 	for _, opt := range opts {
-		opt.Apply(&so)
+		if opt.Apply != nil {
+			opt.Apply(&so)
+		}
 	}
 	return so
 }

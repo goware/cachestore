@@ -12,20 +12,6 @@ import (
 	"github.com/goware/cachestore"
 )
 
-type backend struct {
-	config *Config
-}
-
-func (b *backend) Config() any {
-	return b.config
-}
-
-func Backend(cfg *Config) cachestore.Backend {
-	return &backend{
-		config: cfg,
-	}
-}
-
 const LongTime = time.Second * 24 * 60 * 60 // 1 day in seconds
 
 var _ cachestore.Store[any] = &RedisStore[any]{}
@@ -33,6 +19,20 @@ var _ cachestore.Store[any] = &RedisStore[any]{}
 type RedisStore[V any] struct {
 	options cachestore.StoreOptions
 	pool    *redis.Pool
+}
+
+func Backend(cfg *Config, opts ...cachestore.StoreOptions) cachestore.Backend {
+	options := cachestore.ApplyOptions(opts...)
+	cfg.StoreOptions = options
+	return cfg
+}
+
+func NewWithBackend[V any](backend cachestore.Backend) (cachestore.Store[V], error) {
+	cfg, ok := backend.(*Config)
+	if !ok {
+		return nil, fmt.Errorf("memlru: invalid backend config supplied")
+	}
+	return New[V](cfg, cfg.StoreOptions)
 }
 
 func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
