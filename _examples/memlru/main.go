@@ -5,17 +5,11 @@ import (
 	"fmt"
 
 	"github.com/goware/cachestore/cachestorectl"
-	"github.com/goware/cachestore/redis"
+	"github.com/goware/cachestore/memlru"
 )
 
 func main() {
-	cfg := &redis.Config{
-		Enabled: true,
-		Host:    "localhost",
-		Port:    6379,
-	}
-
-	backend := redis.Backend(cfg)
+	backend := memlru.Backend(5)
 
 	store, err := cachestorectl.Open[string](backend)
 	if err != nil {

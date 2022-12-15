@@ -11,6 +11,47 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
+type Config struct {
+	Size int
+}
+
+type backend struct {
+	config *Config
+}
+
+func (b *backend) Config() any {
+	return b.config
+}
+
+func Backend(size int) cachestore.Backend {
+	return &backend{
+		config: &Config{
+			Size: size,
+		},
+	}
+}
+
+func NewWithBackend[V any](backendz cachestore.Backend) (cachestore.Store[V], error) {
+
+	cfg, ok := backendz.Config().(*Config)
+	if !ok {
+		panic("wee")
+	}
+
+	backend, err := lru.New[string, V](cfg.Size)
+	if err != nil {
+		return nil, err
+	}
+
+	memLRU := &MemLRU[V]{
+		// options:         cachestore.ApplyOptions(opts...),
+		backend:         backend,
+		expirationQueue: newExpirationQueue(),
+	}
+
+	return memLRU, nil
+}
+
 var _ cachestore.Store[any] = &MemLRU[any]{}
 
 // determines the minimum time between every TTL-based removal

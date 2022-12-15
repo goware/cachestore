@@ -12,6 +12,20 @@ import (
 	"github.com/goware/cachestore"
 )
 
+type backend struct {
+	config *Config
+}
+
+func (b *backend) Config() any {
+	return b.config
+}
+
+func Backend(cfg *Config) cachestore.Backend {
+	return &backend{
+		config: cfg,
+	}
+}
+
 const LongTime = time.Second * 24 * 60 * 60 // 1 day in seconds
 
 var _ cachestore.Store[any] = &RedisStore[any]{}

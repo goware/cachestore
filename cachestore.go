@@ -48,3 +48,7 @@ type Store[V any] interface {
 	// or testing, and never in practice.
 	ClearAll(ctx context.Context) error
 }
+
+type Backend interface {
+	Config() any
+}
