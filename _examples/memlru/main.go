@@ -7,19 +7,13 @@ import (
 
 	"github.com/goware/cachestore"
 	"github.com/goware/cachestore/cachestorectl"
-	"github.com/goware/cachestore/redis"
+	"github.com/goware/cachestore/memlru"
 )
 
 func main() {
-	cfg := &redis.Config{
-		Enabled: true,
-		Host:    "localhost",
-		Port:    6379,
-	}
+	backend := memlru.Backend(200, cachestore.WithDefaultKeyExpiry(1*time.Second))
 
-	backend := redis.Backend(cfg) //, cachestore.WithDefaultKeyExpiry(1*time.Second))
-
-	store, err := cachestorectl.Open[string](backend, cachestore.WithDefaultKeyExpiry(1*time.Second))
+	store, err := cachestorectl.Open[string](backend) //, cachestore.WithDefaultKeyExpiry(1*time.Second))
 	if err != nil {
 		panic(err)
 	}
@@ -46,7 +40,7 @@ func main() {
 	}
 	fmt.Println("=> get(foo:10) =", v)
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	// should expire based on rule above
 	v, ok, err = store.Get(ctx, "foo:10")
@@ -82,4 +76,5 @@ func main() {
 
 	fmt.Println("done.")
 	fmt.Println("")
+
 }

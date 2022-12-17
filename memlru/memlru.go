@@ -3,6 +3,7 @@ package memlru
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,24 @@ type MemLRU[V any] struct {
 	expirationQueue *expirationQueue
 	lastExpiryCheck time.Time
 	mu              sync.RWMutex
+}
+
+func Backend(size int, opts ...cachestore.StoreOptions) cachestore.Backend {
+	return &Config{
+		StoreOptions: cachestore.ApplyOptions(opts...),
+		Size:         size,
+	}
+}
+
+func NewWithBackend[V any](backend cachestore.Backend, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
+	cfg, ok := backend.(*Config)
+	if !ok {
+		return nil, fmt.Errorf("memlru: invalid backend config supplied")
+	}
+	for _, opt := range opts {
+		opt.Apply(&cfg.StoreOptions)
+	}
+	return NewWithSize[V](cfg.Size, cfg.StoreOptions)
 }
 
 func New[V any](opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {

@@ -21,6 +21,23 @@ type RedisStore[V any] struct {
 	pool    *redis.Pool
 }
 
+func Backend(cfg *Config, opts ...cachestore.StoreOptions) cachestore.Backend {
+	options := cachestore.ApplyOptions(opts...)
+	cfg.StoreOptions = options
+	return cfg
+}
+
+func NewWithBackend[V any](backend cachestore.Backend, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
+	cfg, ok := backend.(*Config)
+	if !ok {
+		return nil, fmt.Errorf("cachestore/redis: invalid backend config supplied")
+	}
+	for _, opt := range opts {
+		opt.Apply(&cfg.StoreOptions)
+	}
+	return New[V](cfg, cfg.StoreOptions)
+}
+
 func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
 	if !cfg.Enabled {
 		return nil, errors.New("cachestore/redis: attempting to create store while config.Enabled is false")
@@ -41,7 +58,7 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 		address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 		c, err := redis.Dial("tcp", address, redis.DialDatabase(cfg.DBIndex))
 		if err != nil {
-			return nil, fmt.Errorf("unable to dial redis host %v: %w", address, err)
+			return nil, fmt.Errorf("cachestore/redis: unable to dial redis host %v: %w", address, err)
 		}
 		return c, nil
 	})
@@ -49,7 +66,7 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 		return nil, err
 	}
 
-	// Apply store options
+	// Apply store options, where value set by options will take precedence over the default
 	store.options = cachestore.ApplyOptions(opts...)
 	if store.options.DefaultKeyExpiry == 0 && cfg.KeyTTL > 0 {
 		store.options.DefaultKeyExpiry = cfg.KeyTTL

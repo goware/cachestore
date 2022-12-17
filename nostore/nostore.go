@@ -11,6 +11,20 @@ var _ cachestore.Store[any] = &NoStore[any]{}
 
 type NoStore[V any] struct{}
 
+type Config struct {
+	cachestore.StoreOptions
+}
+
+func (c *Config) Apply(options *cachestore.StoreOptions) {
+	c.StoreOptions.Apply(options)
+}
+
+func Backend() cachestore.Backend {
+	return &Config{
+		StoreOptions: cachestore.StoreOptions{},
+	}
+}
+
 func New[V any]() (cachestore.Store[V], error) {
 	return &NoStore[V]{}, nil
 }
