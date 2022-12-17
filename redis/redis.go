@@ -22,6 +22,13 @@ type RedisStore[V any] struct {
 }
 
 func Backend(cfg *Config, opts ...cachestore.StoreOptions) cachestore.Backend {
+	// TODO: perhaps in the future, we actually create a Backend struct type,
+	// where we put the redis connection, this way we can reuse the same connection pool
+	// instead of making new ones at the time of connect. This would move the dial function
+	// from inside of NewWithBackend to this method here. We would also need to either
+	// add the `pool *redis.Pool` on the *Config object above, or we can make a new one
+	// called like RedisBackend struct { StoreOptions, Config, pool }
+
 	options := cachestore.ApplyOptions(opts...)
 	cfg.StoreOptions = options
 	return cfg
