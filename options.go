@@ -8,11 +8,9 @@ func ApplyOptions(opts ...StoreOptions) StoreOptions {
 			Apply: func(opts *StoreOptions) {},
 		}
 	}
-	so := StoreOptions{}
+	so := opts[0]
 	for _, opt := range opts {
-		if opt.Apply != nil {
-			opt.Apply(&so)
-		}
+		opt.Apply(&so)
 	}
 	return so
 }

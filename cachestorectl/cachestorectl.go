@@ -9,14 +9,14 @@ import (
 	"github.com/goware/cachestore/redis"
 )
 
-func Open[T any](backend cachestore.Backend) (cachestore.Store[T], error) {
+func Open[T any](backend cachestore.Backend, opts ...cachestore.StoreOptions) (cachestore.Store[T], error) {
 	switch t := backend.(type) {
 
 	case *memlru.Config:
-		return memlru.NewWithBackend[T](backend)
+		return memlru.NewWithBackend[T](backend, opts...)
 
 	case *redis.Config:
-		return redis.NewWithBackend[T](backend)
+		return redis.NewWithBackend[T](backend, opts...)
 
 	case *nostore.Config:
 		return nostore.New[T]()
