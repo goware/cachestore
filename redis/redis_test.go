@@ -180,3 +180,32 @@ func TestExpiryOptions(t *testing.T) {
 	require.True(t, exists)
 	require.Equal(t, "longer", value)
 }
+
+func TestDeletePrefix(t *testing.T) {
+	ctx := context.Background()
+
+	cache, err := New[string](&Config{Enabled: true, Host: "localhost"})
+	require.NoError(t, err)
+
+	err = cache.Set(ctx, "test1", "1")
+	require.NoError(t, err)
+	err = cache.Set(ctx, "test2", "2")
+	require.NoError(t, err)
+	err = cache.Set(ctx, "test3", "3")
+	require.NoError(t, err)
+	err = cache.Set(ctx, "test4", "4")
+	require.NoError(t, err)
+
+	v, ok, err := cache.Get(ctx, "test3")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "3", v)
+
+	err = cache.DeletePrefix(ctx, "test")
+	require.NoError(t, err)
+
+	v, ok, err = cache.Get(ctx, "test3")
+	require.NoError(t, err)
+	require.False(t, ok)
+	require.Equal(t, "", v)
+}

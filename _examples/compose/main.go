@@ -93,7 +93,10 @@ func main() {
 
 	{
 		// clearing redis
-		rstore.DeletePrefix(ctx, "foo")
+		err := rstore.DeletePrefix(ctx, "foo:")
+		if err != nil {
+			log.Fatal(err)
+		}
 		key := "foo:42"
 		_, ok, err := rstore.Get(ctx, key)
 		if err != nil {
@@ -117,7 +120,7 @@ func main() {
 	}
 
 	{
-		err = store.DeletePrefix(ctx, "foo")
+		err = store.DeletePrefix(ctx, "foo:")
 		if err != nil {
 			log.Fatal(err)
 		}

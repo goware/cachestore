@@ -61,21 +61,15 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 	}
 
 	// Create store and connect to backend
-	store, err := createWithDialFunc[V](cfg, func() (*redis.Client, error) {
-		address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-		c := redis.NewClient(&redis.Options{
-			Addr: address,
-			DB:   cfg.DBIndex,
-		})
+	address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	store := &RedisStore[V]{
+		options: cachestore.ApplyOptions(opts...),
+		client:  newRedisClient(cfg, address),
+	}
 
-		// c, err := redis.Dial("tcp", address, redis.DialDatabase(cfg.DBIndex))
-		// if err != nil {
-		// 	return nil, fmt.Errorf("cachestore/redis: unable to dial redis host %v: %w", address, err)
-		// }
-		return c, nil
-	})
+	err := store.client.Ping(context.Background()).Err()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cachestore/redis: unable to dial redis host %v: %w", address, err)
 	}
 
 	// Apply store options, where value set by options will take precedence over the default
@@ -93,47 +87,22 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 	return store, nil
 }
 
-func createWithDialFunc[V any](cfg *Config, dial func() (*redis.Client, error)) (*RedisStore[V], error) {
-	c, err := dial()
-	if err != nil {
-		return nil, err
+func newRedisClient(cfg *Config, address string) *redis.Client {
+	var maxIdle, maxActive = cfg.MaxIdle, cfg.MaxActive
+	if maxIdle <= 0 {
+		maxIdle = 20
+	}
+	if maxActive <= 0 {
+		maxActive = 50
 	}
 
-	return &RedisStore[V]{
-		// pool: newPool(cfg, dial),
-		// client: newPool(cfg, dial), // TODO:.. uupdate..
-		client: c,
-	}, nil
+	return redis.NewClient(&redis.Options{
+		Addr:         address,
+		DB:           cfg.DBIndex,
+		MinIdleConns: maxIdle,
+		PoolSize:     maxActive,
+	})
 }
-
-// taken and adapted from https://medium.com/@gilcrest_65433/basic-redis-examples-with-go-a3348a12878e
-// func newPool(cfg *Config, dial func() (*redis.Client, error)) *redis.Client {
-// 	var maxIdle, maxActive = cfg.MaxIdle, cfg.MaxActive
-// 	if maxIdle <= 0 {
-// 		maxIdle = 20
-// 	}
-// 	if maxActive <= 0 {
-// 		maxActive = 50
-// 	}
-
-// 	return &redis.Client{}
-
-// 	// return &redis.Pool{
-// 	// 	// Maximum number of idle connections in the pool.
-// 	// 	MaxIdle: maxIdle,
-// 	// 	// max number of connections
-// 	// 	MaxActive: maxActive,
-
-// 	// 	Dial: dial,
-// 	// 	TestOnBorrow: func(c redis.Conn, t time.Time) error {
-// 	// 		_, err := c.Do("PING")
-// 	// 		if err != nil {
-// 	// 			return fmt.Errorf("PING failed: %w", err)
-// 	// 		}
-// 	// 		return nil
-// 	// 	},
-// 	// }
-// }
 
 func (c *RedisStore[V]) Set(ctx context.Context, key string, value V) error {
 	// call SetEx passing default keyTTL
@@ -246,7 +215,6 @@ func (c *RedisStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, []boo
 		if value == nil {
 			continue
 		}
-
 		v, _ := value.(string)
 
 		out[i], err = deserialize[V]([]byte(v))
@@ -276,48 +244,36 @@ func (c *RedisStore[V]) Delete(ctx context.Context, key string) error {
 }
 
 func (c *RedisStore[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
-	// conn := c.pool.Get()
-	// defer conn.Close()
+	if len(keyPrefix) < 4 {
+		return fmt.Errorf("cachestore/redis: DeletePrefix keyPrefix '%s' must be at least 4 characters long", keyPrefix)
+	}
 
-	// values, err := redis.Values(conn.Do("SCAN", 0, "MATCH", fmt.Sprintf("%s*", keyPrefix)))
-	// if err != nil {
-	// 	return err
-	// }
+	keys := make([]string, 0, 1000)
 
-	// keys, ok := values[1].([]interface{})
-	// if !ok {
-	// 	return errors.New("SCAN command returned unexpected result")
-	// }
+	var results []string
+	var cursor uint64 = 0
+	var limit int64 = 2000
+	var err error
+	start := true
 
-	// cursor := fmt.Sprintf("%s", values[0])
-	// for cursor != "0" {
-	// 	values, err = redis.Values(conn.Do("SCAN", cursor, "MATCH", fmt.Sprintf("%s*", keyPrefix)))
-	// 	if err != nil {
-	// 		return err
-	// 	}
+	for start || cursor != 0 {
+		start = false
+		results, cursor, err = c.client.Scan(ctx, cursor, fmt.Sprintf("%s*", keyPrefix), limit).Result()
+		if err != nil {
+			return fmt.Errorf("cachestore/redis: SCAN command returned unexpected result: %w", err)
+		}
+		keys = append(keys, results...)
+	}
 
-	// 	keys = append(keys, values[1].([]interface{})...)
-	// 	cursor = fmt.Sprintf("%s", values[0])
-	// }
+	if len(keys) == 0 {
+		return nil
+	}
 
-	// // prepare for a transaction
-	// err = conn.Send("MULTI")
-	// if err != nil {
-	// 	return err
-	// }
+	err = c.client.Unlink(ctx, keys...).Err()
+	if err != nil {
+		return fmt.Errorf("cachestore/redis: DeletePrefix UNLINK failed: %w", err)
+	}
 
-	// for _, key := range keys {
-	// 	// UNLINK is non blocking, hence not using DEL
-	// 	// overall on big queries faster
-	// 	err = conn.Send("UNLINK", key)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
-
-	// _, err = conn.Do("EXEC")
-
-	// return err
 	return nil
 }
 
