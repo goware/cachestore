@@ -162,6 +162,10 @@ func (cs *ComposeStore[V]) Delete(ctx context.Context, key string) error {
 }
 
 func (cs *ComposeStore[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
+	if len(keyPrefix) < 4 {
+		return fmt.Errorf("cachestore: DeletePrefix keyPrefix '%s' must be at least 4 characters long", keyPrefix)
+	}
+
 	for _, s := range cs.stores {
 		err := s.DeletePrefix(ctx, keyPrefix)
 		if err != nil {

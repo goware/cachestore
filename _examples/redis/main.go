@@ -69,7 +69,7 @@ func main() {
 	fmt.Println("=> get(foo:999) =", v)
 
 	// DeletePrefix
-	err = store.DeletePrefix(ctx, "foo")
+	err = store.DeletePrefix(ctx, "foo:")
 	if err != nil {
 		panic(err)
 	}

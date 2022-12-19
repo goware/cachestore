@@ -26,6 +26,11 @@ func TestBasicString(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists)
 	require.Equal(t, "bye", value)
+
+	value, exists, err = cache.Get(ctx, "does-not-exist")
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.Equal(t, "", value)
 }
 
 func TestBasicBytes(t *testing.T) {
@@ -109,6 +114,21 @@ func TestBasicBatchObjects(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []*obj{nil, in[0], in[1], nil, nil}, out)
 	require.Equal(t, []bool{false, true, true, false, false}, exists)
+
+	// another
+	err = cache.Set(ctx, "yes", &obj{A: "yesA", B: "yesB"})
+	require.NoError(t, err)
+
+	vs, oks, err := cache.BatchGet(ctx, []string{"nil1", "yes", "nil2"})
+	require.NoError(t, err)
+
+	require.Nil(t, vs[0])
+	require.NotNil(t, vs[1])
+	require.Nil(t, vs[2])
+	require.False(t, oks[0])
+	require.True(t, oks[1])
+	require.False(t, oks[2])
+	require.NoError(t, err)
 }
 
 func TestBasicBatchObjectEmptyKeys(t *testing.T) {
@@ -159,4 +179,33 @@ func TestExpiryOptions(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists)
 	require.Equal(t, "longer", value)
+}
+
+func TestDeletePrefix(t *testing.T) {
+	ctx := context.Background()
+
+	cache, err := New[string](&Config{Enabled: true, Host: "localhost"})
+	require.NoError(t, err)
+
+	err = cache.Set(ctx, "test1", "1")
+	require.NoError(t, err)
+	err = cache.Set(ctx, "test2", "2")
+	require.NoError(t, err)
+	err = cache.Set(ctx, "test3", "3")
+	require.NoError(t, err)
+	err = cache.Set(ctx, "test4", "4")
+	require.NoError(t, err)
+
+	v, ok, err := cache.Get(ctx, "test3")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "3", v)
+
+	err = cache.DeletePrefix(ctx, "test")
+	require.NoError(t, err)
+
+	v, ok, err = cache.Get(ctx, "test3")
+	require.NoError(t, err)
+	require.False(t, ok)
+	require.Equal(t, "", v)
 }
