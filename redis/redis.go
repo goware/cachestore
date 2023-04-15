@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/goware/cachestore"
+	"github.com/redis/go-redis/v9"
 )
 
 const LongTime = time.Second * 24 * 60 * 60 // 1 day in seconds
@@ -125,7 +125,7 @@ func (c *RedisStore[V]) SetEx(ctx context.Context, key string, value V, ttl time
 	}
 
 	if ttl > 0 {
-		_, err = c.client.SetEX(ctx, key, data, ttl).Result()
+		_, err = c.client.SetEx(ctx, key, data, ttl).Result()
 	} else {
 		_, err = c.client.Set(ctx, key, data, 0).Result()
 	}
@@ -159,7 +159,7 @@ func (c *RedisStore[V]) BatchSetEx(ctx context.Context, keys []string, values []
 		}
 
 		if ttl > 0 {
-			err = pipeline.SetEX(ctx, key, data, ttl).Err()
+			err = pipeline.SetEx(ctx, key, data, ttl).Err()
 		} else {
 			err = pipeline.Set(ctx, key, data, 0).Err()
 		}
