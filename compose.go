@@ -184,3 +184,10 @@ func (cs *ComposeStore[V]) ClearAll(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (cs *ComposeStore[V]) GetOrSetWithLock(
+	ctx context.Context, key string, getter func(context.Context, string) (V, error),
+) (V, error) {
+	var out V
+	return out, fmt.Errorf("cachestore: GetOrSetWithLock is unsupported on ComposeStore")
+}
