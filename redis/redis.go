@@ -287,16 +287,18 @@ func (c *RedisStore[V]) ClearAll(ctx context.Context) error {
 	return fmt.Errorf("cachestore/redis: unsupported")
 }
 
-func (c *RedisStore[V]) GetOrSetWithLock(ctx context.Context, key string, getter func(context.Context, string) (V, error)) (V, error) {
+func (c *RedisStore[V]) GetOrSetWithLock(
+	ctx context.Context, key string, getter func(context.Context, string) (V, error),
+) (V, error) {
 	var out V
 
 	mu, err := c.newMutex(ctx, key)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("cachestore/redis: creating mutex failed: %w", err)
 	}
 	defer mu.Unlock()
 
-	for {
+	for i := 0; ; i++ {
 		// If there's a value in the cache, return it immediately
 		out, found, err := c.Get(ctx, key)
 		if err != nil {
@@ -309,21 +311,21 @@ func (c *RedisStore[V]) GetOrSetWithLock(ctx context.Context, key string, getter
 		// Otherwise attempt to acquire a lock for writing
 		acquired, err := mu.TryLock(ctx)
 		if err != nil {
-			return out, err
+			return out, fmt.Errorf("cachestore/redis: try lock failed: %w", err)
 		}
 		if acquired {
 			break
 		}
 
-		if err := mu.WaitForRetry(ctx); err != nil {
-			return out, err
+		if err := mu.WaitForRetry(ctx, i); err != nil {
+			return out, fmt.Errorf("cachestore/redis: timed out waiting for lock: %w", err)
 		}
 	}
 
 	// Retrieve a new value from the origin
 	out, err = getter(ctx, key)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("getter function failed: %w", err)
 	}
 
 	// Store the retrieved value in the cache
