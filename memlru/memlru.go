@@ -186,6 +186,30 @@ func (m *MemLRU[V]) ClearAll(ctx context.Context) error {
 	return nil
 }
 
+func (m *MemLRU[V]) GetOrSetWithLock(ctx context.Context, key string, getter func(context.Context, string) (V, error)) (V, error) {
+	var out V
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.removeExpiredKeys()
+
+	v, ok := m.backend.Get(key)
+	if ok {
+		return v, nil
+	}
+
+	v, err := getter(ctx, key)
+	if err != nil {
+		return out, err
+	}
+
+	if err := m.setKeyValue(ctx, key, v); err != nil {
+		return out, err
+	}
+
+	return v, nil
+}
+
 func (m *MemLRU[V]) setKeyValue(ctx context.Context, key string, value V) error {
 	if len(key) > cachestore.MaxKeyLength {
 		return cachestore.ErrKeyLengthTooLong
