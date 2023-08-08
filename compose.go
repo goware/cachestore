@@ -188,6 +188,6 @@ func (cs *ComposeStore[V]) ClearAll(ctx context.Context) error {
 func (cs *ComposeStore[V]) GetOrSetWithLock(
 	ctx context.Context, key string, getter func(context.Context, string) (V, error),
 ) (V, error) {
-	var out V
-	return out, fmt.Errorf("cachestore: GetOrSetWithLock is unsupported on ComposeStore")
+	// Skip all intermediate stores and use only the last one as usually it's the most reliable one
+	return cs.stores[len(cs.stores)-1].GetOrSetWithLock(ctx, key, getter)
 }
