@@ -47,6 +47,11 @@ type Store[V any] interface {
 	// ClearAll removes all data from the cache. Only use this during debugging,
 	// or testing, and never in practice.
 	ClearAll(ctx context.Context) error
+
+	// GetOrSetWithLock returns a stored value if it exists. If it doesn't, it acquires
+	// a lock and call the getter callback to retrieve a new value. Then it stores that
+	// value in the cache and releases the lock.
+	GetOrSetWithLock(ctx context.Context, key string, getter func(context.Context, string) (V, error)) (V, error)
 }
 
 type Backend interface {
