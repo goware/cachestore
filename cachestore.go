@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	MaxKeyLength = 80
+	MaxKeyLength = 160
 
 	ErrKeyLengthTooLong = errors.New("cachestore: key length is too long")
 	ErrInvalidKey       = errors.New("cachestore: invalid key")
