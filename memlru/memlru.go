@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/goware/cachestore"
@@ -23,8 +22,8 @@ type MemLRU[V any] struct {
 	options         cachestore.StoreOptions
 	backend         *lru.Cache[string, V]
 	expirationQueue *expirationQueue
-	lastExpiryCheck time.Time
-	mu              sync.RWMutex
+
+	mm *mutexMap
 }
 
 func Backend(size int, opts ...cachestore.StoreOptions) cachestore.Backend {
@@ -59,20 +58,24 @@ func NewWithSize[V any](size int, opts ...cachestore.StoreOptions) (cachestore.S
 		return nil, err
 	}
 
+	options := cachestore.ApplyOptions(opts...)
+	if options.LockRetryTimeout == 0 {
+		options.LockRetryTimeout = 8 * time.Second
+	}
+
 	memLRU := &MemLRU[V]{
-		options:         cachestore.ApplyOptions(opts...),
+		options:         options,
 		backend:         backend,
 		expirationQueue: newExpirationQueue(),
+		mm:              newMutexMap(options),
 	}
 
 	return memLRU, nil
 }
 
 func (m *MemLRU[V]) Exists(ctx context.Context, key string) (bool, error) {
-	m.mu.Lock()
 	m.removeExpiredKeys()
 	_, exists := m.backend.Peek(key)
-	m.mu.Unlock()
 	return exists, nil
 }
 
@@ -81,9 +84,6 @@ func (m *MemLRU[V]) Set(ctx context.Context, key string, value V) error {
 }
 
 func (m *MemLRU[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if err := m.setKeyValue(ctx, key, value); err != nil {
 		return err
 	}
@@ -106,9 +106,6 @@ func (m *MemLRU[V]) BatchSetEx(ctx context.Context, keys []string, values []V, t
 		return errors.New("no keys are passed")
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	for i, key := range keys {
 		m.backend.Add(key, values[i])
 		if ttl > 0 {
@@ -121,10 +118,8 @@ func (m *MemLRU[V]) BatchSetEx(ctx context.Context, keys []string, values []V, t
 
 func (m *MemLRU[V]) Get(ctx context.Context, key string) (V, bool, error) {
 	var out V
-	m.mu.Lock()
 	m.removeExpiredKeys()
 	v, ok := m.backend.Get(key)
-	m.mu.Unlock()
 
 	if !ok {
 		// key not found, respond with no data
@@ -138,7 +133,6 @@ func (m *MemLRU[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool, e
 	vals := make([]V, 0, len(keys))
 	oks := make([]bool, 0, len(keys))
 	var out V
-	m.mu.Lock()
 	m.removeExpiredKeys()
 
 	for _, key := range keys {
@@ -153,15 +147,12 @@ func (m *MemLRU[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool, e
 		vals = append(vals, v)
 		oks = append(oks, true)
 	}
-	m.mu.Unlock()
 
 	return vals, oks, nil
 }
 
 func (m *MemLRU[V]) Delete(ctx context.Context, key string) error {
-	m.mu.Lock()
 	present := m.backend.Remove(key)
-	m.mu.Unlock()
 
 	// NOTE/TODO: we do not check for presence, prob okay
 	_ = present
@@ -169,9 +160,6 @@ func (m *MemLRU[V]) Delete(ctx context.Context, key string) error {
 }
 
 func (m *MemLRU[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	for _, key := range m.backend.Keys() {
 		if strings.HasPrefix(key, keyPrefix) {
 			m.backend.Remove(key)
@@ -195,18 +183,30 @@ func (m *MemLRU[V]) GetOrSetWithLockEx(
 ) (V, error) {
 	var out V
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.removeExpiredKeys()
 
-	v, ok := m.backend.Get(key)
-	if ok {
-		return v, nil
+	ctx, cancel := context.WithTimeout(ctx, m.options.LockRetryTimeout)
+	defer cancel()
+
+	for i := 0; ; i++ {
+		v, ok := m.backend.Get(key)
+		if ok {
+			return v, nil
+		}
+
+		if acquired := m.mm.TryLock(key); acquired {
+			defer m.mm.Unlock(key)
+			break
+		}
+
+		if err := m.mm.WaitForRetry(ctx, i); err != nil {
+			return out, fmt.Errorf("cachestore/memlru: timed out waiting for lock: %w", err)
+		}
 	}
 
 	v, err := getter(ctx, key)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("cachestore/memlru: getter error: %w", err)
 	}
 
 	if err := m.setKeyValue(ctx, key, v); err != nil {
@@ -231,8 +231,7 @@ func (m *MemLRU[V]) setKeyValue(ctx context.Context, key string, value V) error 
 }
 
 func (m *MemLRU[V]) removeExpiredKeys() {
-	now := time.Now()
-	if m.lastExpiryCheck.Add(lastExpiryCheckInterval).After(now) {
+	if !m.expirationQueue.ShouldExpire() {
 		// another removal happened recently
 		return
 	}
@@ -240,5 +239,5 @@ func (m *MemLRU[V]) removeExpiredKeys() {
 	for _, key := range expiredKeys {
 		m.backend.Remove(key)
 	}
-	m.lastExpiryCheck = now
+	m.expirationQueue.UpdateLastCheckTime()
 }

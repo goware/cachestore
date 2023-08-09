@@ -6,8 +6,9 @@ import (
 )
 
 type expirationQueue struct {
-	keys []expirationQueueItem
-	mu   sync.Mutex
+	keys      []expirationQueueItem
+	lastCheck time.Time
+	mu        sync.RWMutex
 }
 
 type expirationQueueItem struct {
@@ -57,6 +58,20 @@ func (e *expirationQueue) Len() int {
 
 func (e *expirationQueue) Expired() []string {
 	return e.expiredAt(time.Now())
+}
+
+func (e *expirationQueue) ShouldExpire() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	now := time.Now()
+	return e.lastCheck.Add(lastExpiryCheckInterval).Before(now)
+}
+
+func (e *expirationQueue) UpdateLastCheckTime() {
+	e.mu.Lock()
+	e.lastCheck = time.Now()
+	e.mu.Unlock()
 }
 
 func (e *expirationQueue) expiredAt(t time.Time) []string {
