@@ -3,6 +3,7 @@ module github.com/goware/cachestore
 go 1.18
 
 require (
+	github.com/goware/singleflight v0.2.0
 	github.com/hashicorp/golang-lru/v2 v2.0.5
 	github.com/redis/go-redis/v9 v9.0.3
 	github.com/stretchr/testify v1.8.1

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/goware/cachestore"
+	"github.com/goware/singleflight"
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
@@ -23,7 +24,7 @@ type MemLRU[V any] struct {
 	backend         *lru.Cache[string, V]
 	expirationQueue *expirationQueue
 
-	mm *mutexMap
+	singleflight singleflight.Group[string, V]
 }
 
 func Backend(size int, opts ...cachestore.StoreOptions) cachestore.Backend {
@@ -67,7 +68,6 @@ func NewWithSize[V any](size int, opts ...cachestore.StoreOptions) (cachestore.S
 		options:         options,
 		backend:         backend,
 		expirationQueue: newExpirationQueue(),
-		mm:              newMutexMap(options),
 	}
 
 	return memLRU, nil
@@ -188,32 +188,27 @@ func (m *MemLRU[V]) GetOrSetWithLockEx(
 	ctx, cancel := context.WithTimeout(ctx, m.options.LockRetryTimeout)
 	defer cancel()
 
-	for i := 0; ; i++ {
-		v, ok := m.backend.Get(key)
-		if ok {
-			return v, nil
-		}
-
-		if acquired := m.mm.TryLock(key); acquired {
-			defer m.mm.Unlock(key)
-			break
-		}
-
-		if err := m.mm.WaitForRetry(ctx, i); err != nil {
-			return out, fmt.Errorf("cachestore/memlru: timed out waiting for lock: %w", err)
-		}
+	v, ok := m.backend.Get(key)
+	if ok {
+		return v, nil
 	}
 
-	v, err := getter(ctx, key)
+	v, err, _ := m.singleflight.Do(key, func() (V, error) {
+		v, err := getter(ctx, key)
+		if err != nil {
+			return out, fmt.Errorf("getter error: %w", err)
+		}
+
+		if err := m.setKeyValue(ctx, key, v); err != nil {
+			return out, err
+		}
+		if ttl > 0 {
+			m.expirationQueue.Push(key, ttl)
+		}
+		return v, nil
+	})
 	if err != nil {
-		return out, fmt.Errorf("cachestore/memlru: getter error: %w", err)
-	}
-
-	if err := m.setKeyValue(ctx, key, v); err != nil {
-		return out, err
-	}
-	if ttl > 0 {
-		m.expirationQueue.Push(key, ttl)
+		return out, fmt.Errorf("cachestore/memlru: singleflight error: %w", err)
 	}
 
 	return v, nil
