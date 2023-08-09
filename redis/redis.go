@@ -290,6 +290,12 @@ func (c *RedisStore[V]) ClearAll(ctx context.Context) error {
 func (c *RedisStore[V]) GetOrSetWithLock(
 	ctx context.Context, key string, getter func(context.Context, string) (V, error),
 ) (V, error) {
+	return c.GetOrSetWithLockEx(ctx, key, getter, c.options.DefaultKeyExpiry)
+}
+
+func (c *RedisStore[V]) GetOrSetWithLockEx(
+	ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration,
+) (V, error) {
 	var out V
 
 	mu, err := c.newMutex(ctx, key)
@@ -329,7 +335,7 @@ func (c *RedisStore[V]) GetOrSetWithLock(
 	}
 
 	// Store the retrieved value in the cache
-	if err := c.Set(ctx, key, out); err != nil {
+	if err := c.SetEx(ctx, key, out, ttl); err != nil {
 		return out, err
 	}
 

@@ -187,6 +187,12 @@ func (m *MemLRU[V]) ClearAll(ctx context.Context) error {
 }
 
 func (m *MemLRU[V]) GetOrSetWithLock(ctx context.Context, key string, getter func(context.Context, string) (V, error)) (V, error) {
+	return m.GetOrSetWithLockEx(ctx, key, getter, m.options.DefaultKeyExpiry)
+}
+
+func (m *MemLRU[V]) GetOrSetWithLockEx(
+	ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration,
+) (V, error) {
 	var out V
 
 	m.mu.Lock()
@@ -205,6 +211,9 @@ func (m *MemLRU[V]) GetOrSetWithLock(ctx context.Context, key string, getter fun
 
 	if err := m.setKeyValue(ctx, key, v); err != nil {
 		return out, err
+	}
+	if ttl > 0 {
+		m.expirationQueue.Push(key, ttl)
 	}
 
 	return v, nil

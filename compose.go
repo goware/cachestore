@@ -191,3 +191,10 @@ func (cs *ComposeStore[V]) GetOrSetWithLock(
 	// Skip all intermediate stores and use only the last one as usually it's the most reliable one
 	return cs.stores[len(cs.stores)-1].GetOrSetWithLock(ctx, key, getter)
 }
+
+func (cs *ComposeStore[V]) GetOrSetWithLockEx(
+	ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration,
+) (V, error) {
+	// Skip all intermediate stores and use only the last one as usually it's the most reliable one
+	return cs.stores[len(cs.stores)-1].GetOrSetWithLockEx(ctx, key, getter, ttl)
+}

@@ -69,3 +69,11 @@ func (s *NoStore[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
 func (s *NoStore[V]) ClearAll(ctx context.Context) error {
 	return nil
 }
+
+func (s *NoStore[V]) GetOrSetWithLock(ctx context.Context, key string, getter func(context.Context, string) (V, error)) (V, error) {
+	return getter(ctx, key)
+}
+
+func (s *NoStore[V]) GetOrSetWithLockEx(ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration) (V, error) {
+	return getter(ctx, key)
+}
