@@ -62,7 +62,9 @@ func (m *mutex) TryLock(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to acquire lock: %w", err)
 	}
-	m.wasLocked = true
+	if acquired {
+		m.wasLocked = true
+	}
 	return acquired, nil
 }
 
