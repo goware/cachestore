@@ -3,11 +3,15 @@ package memlru
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/goware/cachestore"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestCacheInt(t *testing.T) {
@@ -185,4 +189,50 @@ func TestExpiryOptions(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists)
 	require.Equal(t, "longer", value)
+}
+
+func TestGetOrSetWithLock(t *testing.T) {
+	ctx := context.Background()
+
+	cache, err := New[string]()
+	require.NoError(t, err)
+
+	var counter atomic.Uint32
+	getter := func(ctx context.Context, key string) (string, error) {
+		counter.Add(1)
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+			return "result:" + key, nil
+		}
+	}
+
+	concurrentCalls := 15
+	results := make(chan string, concurrentCalls)
+	key := fmt.Sprintf("concurrent-%d", rand.Uint64())
+
+	var wg errgroup.Group
+	for i := 0; i < concurrentCalls; i++ {
+		wg.Go(func() error {
+			v, err := cache.GetOrSetWithLock(ctx, key, getter)
+			if err != nil {
+				return err
+			}
+			results <- v
+			return nil
+		})
+	}
+
+	require.NoError(t, wg.Wait())
+	assert.Equalf(t, 1, int(counter.Load()), "getter should be called only once")
+
+	for i := 0; i < concurrentCalls; i++ {
+		select {
+		case v := <-results:
+			assert.Equal(t, "result:"+key, v)
+		default:
+			t.Errorf("expected %d results but only got %d", concurrentCalls, i)
+		}
+	}
 }

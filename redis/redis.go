@@ -2,9 +2,11 @@ package redis
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"time"
 
@@ -19,6 +21,7 @@ var _ cachestore.Store[any] = &RedisStore[any]{}
 type RedisStore[V any] struct {
 	options cachestore.StoreOptions
 	client  *redis.Client
+	random  io.Reader
 }
 
 func Backend(cfg *Config, opts ...cachestore.StoreOptions) cachestore.Backend {
@@ -65,6 +68,7 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 	store := &RedisStore[V]{
 		options: cachestore.ApplyOptions(opts...),
 		client:  newRedisClient(cfg, address),
+		random:  rand.Reader,
 	}
 
 	err := store.client.Ping(context.Background()).Err()
@@ -281,6 +285,61 @@ func (c *RedisStore[V]) ClearAll(ctx context.Context) error {
 	// With redis, we do not support ClearAll as its too destructive. For testing
 	// use the memlru if you want to Clear All.
 	return fmt.Errorf("cachestore/redis: unsupported")
+}
+
+func (c *RedisStore[V]) GetOrSetWithLock(
+	ctx context.Context, key string, getter func(context.Context, string) (V, error),
+) (V, error) {
+	return c.GetOrSetWithLockEx(ctx, key, getter, c.options.DefaultKeyExpiry)
+}
+
+func (c *RedisStore[V]) GetOrSetWithLockEx(
+	ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration,
+) (V, error) {
+	var out V
+
+	mu, err := c.newMutex(ctx, key)
+	if err != nil {
+		return out, fmt.Errorf("cachestore/redis: creating mutex failed: %w", err)
+	}
+	defer mu.Unlock()
+
+	for i := 0; ; i++ {
+		// If there's a value in the cache, return it immediately
+		out, found, err := c.Get(ctx, key)
+		if err != nil {
+			return out, err
+		}
+		if found {
+			return out, nil
+		}
+
+		// Otherwise attempt to acquire a lock for writing
+		acquired, err := mu.TryLock(ctx)
+		if err != nil {
+			return out, fmt.Errorf("cachestore/redis: try lock failed: %w", err)
+		}
+		if acquired {
+			break
+		}
+
+		if err := mu.WaitForRetry(ctx, i); err != nil {
+			return out, fmt.Errorf("cachestore/redis: timed out waiting for lock: %w", err)
+		}
+	}
+
+	// Retrieve a new value from the origin
+	out, err = getter(ctx, key)
+	if err != nil {
+		return out, fmt.Errorf("getter function failed: %w", err)
+	}
+
+	// Store the retrieved value in the cache
+	if err := c.SetEx(ctx, key, out, ttl); err != nil {
+		return out, err
+	}
+
+	return out, nil
 }
 
 func (c *RedisStore[V]) RedisClient() *redis.Client {
