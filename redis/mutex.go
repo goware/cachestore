@@ -79,6 +79,25 @@ func (m *mutex) WaitForRetry(ctx context.Context, retryNumber int) error {
 	}
 }
 
+var extendLockScript = redis.NewScript(`
+	if redis.call("get", KEYS[1]) == ARGV[1] then
+		return redis.call("pexpire", KEYS[1], ARGV[2])
+	else
+		return 0
+	end
+`)
+
+func (m *mutex) Extend(ctx context.Context) error {
+	expired, err := extendLockScript.Run(ctx, m.client, []string{m.key}, m.val, m.lockExpiry.Milliseconds()).Bool()
+	if err != nil {
+		return err
+	}
+	if !expired {
+		return fmt.Errorf("unable to extend lock")
+	}
+	return nil
+}
+
 func (m *mutex) nextDelay(retryNumber int) time.Duration {
 	minDelay, maxDelay := int(m.minRetryDelay)*(retryNumber+1), int(m.maxRetryDelay)
 	return time.Duration(rand.Intn(maxDelay-minDelay) + minDelay)
