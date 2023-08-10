@@ -44,7 +44,7 @@ func (c *RedisStore[V]) newMutex(ctx context.Context, key string) (*mutex, error
 	}
 
 	if m.lockExpiry == 0 {
-		m.lockExpiry = 6 * time.Second
+		m.lockExpiry = 5 * time.Second
 	}
 	if m.retryTimeout == 0 {
 		m.retryTimeout = 10 * time.Second
