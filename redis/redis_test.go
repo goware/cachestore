@@ -218,7 +218,7 @@ func TestDeletePrefix(t *testing.T) {
 func TestGetOrSetWithLock(t *testing.T) {
 	ctx := context.Background()
 
-	cache, err := New[string](&Config{Enabled: true, Host: "localhost"})
+	cache, err := New[string](&Config{Enabled: true, Host: "localhost"}, cachestore.WithLockExpiry(1*time.Second))
 	require.NoError(t, err)
 
 	var counter atomic.Uint32
@@ -227,7 +227,7 @@ func TestGetOrSetWithLock(t *testing.T) {
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
-		case <-time.After(600 * time.Millisecond):
+		case <-time.After(3 * time.Second):
 			return "result:" + key, nil
 		}
 	}

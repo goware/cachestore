@@ -44,13 +44,13 @@ func (c *RedisStore[V]) newMutex(ctx context.Context, key string) (*mutex, error
 	}
 
 	if m.lockExpiry == 0 {
-		m.lockExpiry = 12 * time.Second
+		m.lockExpiry = 6 * time.Second
 	}
 	if m.retryTimeout == 0 {
-		m.retryTimeout = 8 * time.Second
+		m.retryTimeout = 10 * time.Second
 	}
 	if m.maxRetryDelay == 0 {
-		m.maxRetryDelay = 150 * time.Millisecond
+		m.maxRetryDelay = 200 * time.Millisecond
 	}
 
 	m.waitCtx, m.waitCtxCancel = context.WithTimeout(ctx, m.retryTimeout)
