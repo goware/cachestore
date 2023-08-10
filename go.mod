@@ -1,6 +1,6 @@
 module github.com/goware/cachestore
 
-go 1.18
+go 1.20
 
 require (
 	github.com/goware/singleflight v0.2.0

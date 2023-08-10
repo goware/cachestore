@@ -43,13 +43,13 @@ func (c *RedisStore[V]) newMutex(ctx context.Context, key string) (*mutex, error
 	}
 
 	if m.lockExpiry == 0 {
-		m.lockExpiry = 12 * time.Second
+		m.lockExpiry = 5 * time.Second
 	}
 	if m.retryTimeout == 0 {
-		m.retryTimeout = 8 * time.Second
+		m.retryTimeout = 10 * time.Second
 	}
 	if m.maxRetryDelay == 0 {
-		m.maxRetryDelay = 150 * time.Millisecond
+		m.maxRetryDelay = 200 * time.Millisecond
 	}
 
 	m.waitCtx, m.waitCtxCancel = context.WithTimeout(ctx, m.retryTimeout)
@@ -61,7 +61,9 @@ func (m *mutex) TryLock(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to acquire lock: %w", err)
 	}
-	m.wasLocked = true
+	if acquired {
+		m.wasLocked = true
+	}
 	return acquired, nil
 }
 
@@ -74,6 +76,25 @@ func (m *mutex) WaitForRetry(ctx context.Context, retryNumber int) error {
 	case <-time.After(m.nextDelay(retryNumber)):
 		return nil
 	}
+}
+
+var extendLockScript = redis.NewScript(`
+	if redis.call("get", KEYS[1]) == ARGV[1] then
+		return redis.call("pexpire", KEYS[1], ARGV[2])
+	else
+		return 0
+	end
+`)
+
+func (m *mutex) Extend(ctx context.Context) error {
+	expired, err := extendLockScript.Run(ctx, m.client, []string{m.key}, m.val, m.lockExpiry.Milliseconds()).Bool()
+	if err != nil {
+		return err
+	}
+	if !expired {
+		return fmt.Errorf("unable to extend lock")
+	}
+	return nil
 }
 
 func (m *mutex) nextDelay(retryNumber int) time.Duration {

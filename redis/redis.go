@@ -328,6 +328,25 @@ func (c *RedisStore[V]) GetOrSetWithLockEx(
 		}
 	}
 
+	// We extend the lock in a goroutine for as long as GetOrSetWithLockEx runs.
+	// If we're unable to extend the lock, the cancellation is propagated to the getter,
+	// that is then expected to terminate.
+	ctx, cancel := context.WithCancelCause(ctx)
+	extendCtx, cancelExtending := context.WithCancel(ctx)
+	defer cancelExtending()
+	go func() {
+		for {
+			select {
+			case <-extendCtx.Done():
+				return
+			case <-time.After(mu.lockExpiry / 2):
+				if err := mu.Extend(extendCtx); err != nil {
+					cancel(err)
+				}
+			}
+		}
+	}()
+
 	// Retrieve a new value from the origin
 	out, err = getter(ctx, key)
 	if err != nil {
