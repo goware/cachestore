@@ -14,7 +14,6 @@ type mutex struct {
 	client *redis.Client
 	key    string
 	val    string
-	rand   rand.Rand
 
 	wasLocked bool
 
