@@ -94,6 +94,24 @@ func (m *MemLRU[V]) SetEx(ctx context.Context, key string, value V, ttl time.Dur
 	return nil
 }
 
+func (c *MemLRU[V]) GetEx(ctx context.Context, key string) (out V, ttl time.Duration, exists bool, err error) {
+	out, exists, err = c.Get(ctx, key)
+	if err != nil {
+		return out, 0, false, fmt.Errorf("get %w", err)
+	}
+
+	if !exists {
+		return out, ttl, false, nil
+	}
+
+	item, ok := c.expirationQueue.GetItem(key)
+	if !ok {
+		return out, 0, false, fmt.Errorf("key %s does not have ttl set", key)
+	}
+
+	return out, item.expiresAt.Sub(time.Now()), true, nil
+}
+
 func (m *MemLRU[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
 	return m.BatchSetEx(ctx, keys, values, m.options.DefaultKeyExpiry)
 }
