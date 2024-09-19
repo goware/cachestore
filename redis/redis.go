@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"time"
 
@@ -148,12 +149,12 @@ func (c *RedisStore[V]) GetEx(ctx context.Context, key string) (V, time.Duration
 		getTTL := pipe.TTL(ctx, key)
 
 		_, err := pipe.Exec(ctx)
-		if err != nil && !errors.Is(err, redis.Nil) {
-			return fmt.Errorf("exec: %w", err)
+		if errors.Is(err, redis.Nil) {
+			return err
 		}
 
-		if errors.Is(err, redis.Nil) {
-			return nil
+		if err != nil {
+			return fmt.Errorf("exec: %w", err)
 		}
 
 		ttl, err = getTTL.Result()
@@ -162,11 +163,11 @@ func (c *RedisStore[V]) GetEx(ctx context.Context, key string) (V, time.Duration
 		}
 
 		if ttl == -1 {
-			return fmt.Errorf("key %s does not have ttl set", key)
+			ttl = time.Duration(math.MaxInt64)
 		}
 
 		data, err := getVal.Bytes()
-		if data == nil {
+		if err != nil {
 			return fmt.Errorf("get bytes: %w", err)
 		}
 
@@ -178,12 +179,12 @@ func (c *RedisStore[V]) GetEx(ctx context.Context, key string) (V, time.Duration
 		return nil
 	})
 
-	if err != nil {
-		return out, ttl, false, fmt.Errorf("GetEx: %w", err)
+	if errors.Is(err, redis.Nil) {
+		return out, ttl, false, nil
 	}
 
-	if ttl == 0 {
-		return out, ttl, false, nil
+	if err != nil {
+		return out, ttl, false, fmt.Errorf("GetEx: %w", err)
 	}
 
 	return out, ttl, true, nil

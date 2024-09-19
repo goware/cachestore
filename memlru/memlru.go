@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -106,7 +107,7 @@ func (c *MemLRU[V]) GetEx(ctx context.Context, key string) (out V, ttl time.Dura
 
 	item, ok := c.expirationQueue.GetItem(key)
 	if !ok {
-		return out, 0, false, fmt.Errorf("key %s does not have ttl set", key)
+		return out, time.Duration(math.MaxInt64), true, nil
 	}
 
 	return out, item.expiresAt.Sub(time.Now()), true, nil

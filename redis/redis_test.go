@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"sync/atomic"
 	"testing"
@@ -287,5 +288,6 @@ func TestGetEx(t *testing.T) {
 	require.NoError(t, err)
 
 	v, ttl, exists, err = cache.GetEx(ctx, "without-ttl")
-	require.Error(t, err)
+	require.NoError(t, err)
+	require.InDelta(t, time.Duration(math.MaxInt64), ttl, float64(2*time.Second), "TTL are not equal within the allowed delta")
 }
