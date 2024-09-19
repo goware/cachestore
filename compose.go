@@ -53,20 +53,6 @@ func (cs *ComposeStore[V]) SetEx(ctx context.Context, key string, value V, ttl t
 	return nil
 }
 
-func (cs *ComposeStore[V]) GetEx(ctx context.Context, key string) (out V, ttl time.Duration, exists bool, err error) {
-	for _, s := range cs.stores {
-		out, ttl, exists, err = s.GetEx(ctx, key)
-		if err != nil {
-			return out, ttl, exists, err
-		}
-		if exists {
-			return out, ttl, exists, nil
-		}
-	}
-
-	return out, ttl, exists, err
-}
-
 func (cs *ComposeStore[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
 	for _, s := range cs.stores {
 		err := s.BatchSet(ctx, keys, values)
@@ -85,6 +71,20 @@ func (cs *ComposeStore[V]) BatchSetEx(ctx context.Context, keys []string, values
 		}
 	}
 	return nil
+}
+
+func (cs *ComposeStore[V]) GetEx(ctx context.Context, key string) (out V, ttl time.Duration, exists bool, err error) {
+	for _, s := range cs.stores {
+		out, ttl, exists, err = s.GetEx(ctx, key)
+		if err != nil {
+			return out, ttl, exists, err
+		}
+		if exists {
+			break
+		}
+	}
+
+	return out, ttl, exists, nil
 }
 
 func (cs *ComposeStore[V]) Get(ctx context.Context, key string) (V, bool, error) {
