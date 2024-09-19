@@ -187,15 +187,16 @@ func (c *RedisStore[V]) GetEx(ctx context.Context, key string) (V, time.Duration
 	var ttl time.Duration
 
 	_, err := c.client.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		var err error
+
 		getVal := pipe.Get(ctx, key)
 		getTTL := pipe.TTL(ctx, key)
 
-		_, err := pipe.Exec(ctx)
-		if errors.Is(err, redis.Nil) {
-			return err
-		}
+		if _, err = pipe.Exec(ctx); err != nil {
+			if errors.Is(err, redis.Nil) {
+				return err
+			}
 
-		if err != nil {
 			return fmt.Errorf("exec: %w", err)
 		}
 
@@ -221,11 +222,11 @@ func (c *RedisStore[V]) GetEx(ctx context.Context, key string) (V, time.Duration
 		return nil
 	})
 
-	if errors.Is(err, redis.Nil) {
-		return out, ttl, false, nil
-	}
-
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return out, ttl, false, nil
+		}
+
 		return out, ttl, false, fmt.Errorf("GetEx: %w", err)
 	}
 
