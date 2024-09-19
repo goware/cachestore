@@ -132,6 +132,10 @@ func (c *MemLRU[V]) GetEx(ctx context.Context, key string) (out V, ttl time.Dura
 		return out, time.Duration(math.MaxInt64), true, nil
 	}
 
+	if item.expiresAt.Before(time.Now()) {
+		return out, 0, false, nil
+	}
+
 	return out, item.expiresAt.Sub(time.Now()), true, nil
 }
 
