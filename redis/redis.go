@@ -140,6 +140,48 @@ func (c *RedisStore[V]) SetEx(ctx context.Context, key string, value V, ttl time
 	return nil
 }
 
+func (c *RedisStore[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
+	return c.BatchSetEx(ctx, keys, values, c.options.DefaultKeyExpiry)
+}
+
+func (c *RedisStore[V]) BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error {
+	if len(keys) != len(values) {
+		return errors.New("keys and values are not the same length")
+	}
+	if len(keys) == 0 {
+		return errors.New("no keys are passed")
+	}
+
+	pipeline := c.client.Pipeline()
+
+	// use pipelining to insert all keys. This ensures only one round-trip to
+	// the server. We could use MSET but it doesn't support TTL so we'd need to
+	// send one EXPIRE command per key anyway
+	for i, key := range keys {
+		data, err := serialize(values[i])
+		if err != nil {
+			return fmt.Errorf("unable to serialize object: %w", err)
+		}
+
+		if ttl > 0 {
+			err = pipeline.SetEx(ctx, key, data, ttl).Err()
+		} else {
+			err = pipeline.Set(ctx, key, data, 0).Err()
+		}
+		if err != nil {
+			return fmt.Errorf("failed writing key: %w", err)
+		}
+	}
+
+	// send all commands
+	_, err := pipeline.Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("error encountered while batch-inserting value: %w", err)
+	}
+
+	return nil
+}
+
 func (c *RedisStore[V]) GetEx(ctx context.Context, key string) (V, time.Duration, bool, error) {
 	var out V
 	var ttl time.Duration
@@ -188,48 +230,6 @@ func (c *RedisStore[V]) GetEx(ctx context.Context, key string) (V, time.Duration
 	}
 
 	return out, ttl, true, nil
-}
-
-func (c *RedisStore[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
-	return c.BatchSetEx(ctx, keys, values, c.options.DefaultKeyExpiry)
-}
-
-func (c *RedisStore[V]) BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error {
-	if len(keys) != len(values) {
-		return errors.New("keys and values are not the same length")
-	}
-	if len(keys) == 0 {
-		return errors.New("no keys are passed")
-	}
-
-	pipeline := c.client.Pipeline()
-
-	// use pipelining to insert all keys. This ensures only one round-trip to
-	// the server. We could use MSET but it doesn't support TTL so we'd need to
-	// send one EXPIRE command per key anyway
-	for i, key := range keys {
-		data, err := serialize(values[i])
-		if err != nil {
-			return fmt.Errorf("unable to serialize object: %w", err)
-		}
-
-		if ttl > 0 {
-			err = pipeline.SetEx(ctx, key, data, ttl).Err()
-		} else {
-			err = pipeline.Set(ctx, key, data, 0).Err()
-		}
-		if err != nil {
-			return fmt.Errorf("failed writing key: %w", err)
-		}
-	}
-
-	// send all commands
-	_, err := pipeline.Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("error encountered while batch-inserting value: %w", err)
-	}
-
-	return nil
 }
 
 func (c *RedisStore[V]) Get(ctx context.Context, key string) (V, bool, error) {
