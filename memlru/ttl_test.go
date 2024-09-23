@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -24,24 +24,24 @@ func TestExpirationQueue(t *testing.T) {
 	q.Push("e", time.Millisecond*300)
 	q.Push("f", time.Millisecond*50)
 
-	assert.Equal(t, 6, q.Len())
+	require.Equal(t, 6, q.Len())
 
 	{
 		var lastTime time.Time
 		for _, key := range q.keys {
-			assert.LessOrEqual(t, lastTime, key.expiresAt)
+			require.LessOrEqual(t, lastTime, key.expiresAt)
 			lastTime = key.expiresAt
 		}
 	}
 
 	q.Push("f", time.Millisecond*500)
 
-	assert.Equal(t, 6, q.Len())
+	require.Equal(t, 6, q.Len())
 
 	{
 		var lastTime time.Time
 		for _, key := range q.keys {
-			assert.LessOrEqual(t, lastTime, key.expiresAt)
+			require.LessOrEqual(t, lastTime, key.expiresAt)
 			lastTime = key.expiresAt
 		}
 	}
@@ -49,34 +49,34 @@ func TestExpirationQueue(t *testing.T) {
 	{
 		keys := q.expiredAt(time.Now())
 
-		assert.Equal(t, 6, q.Len())
-		assert.Equal(t, 0, len(keys))
+		require.Equal(t, 6, q.Len())
+		require.Equal(t, 0, len(keys))
 	}
 
 	{
 		keys := q.expiredAt(time.Now().Add(time.Second * -1))
 
-		assert.Equal(t, 6, q.Len())
-		assert.Equal(t, 0, len(keys))
+		require.Equal(t, 6, q.Len())
+		require.Equal(t, 0, len(keys))
 	}
 
 	{
 		keys := q.expiredAt(time.Now().Add(time.Millisecond * 200))
 
-		assert.Equal(t, 3, q.Len())
-		assert.Equal(t, 3, len(keys))
+		require.Equal(t, 3, q.Len())
+		require.Equal(t, 3, len(keys))
 	}
 
 	for i := 0; i < 100; i++ {
 		q.Push("z", time.Millisecond*time.Duration(50+rand.Intn(500)))
 	}
 
-	assert.Equal(t, 4, q.Len())
+	require.Equal(t, 4, q.Len())
 
 	{
 		var lastTime time.Time
 		for _, key := range q.keys {
-			assert.LessOrEqual(t, lastTime, key.expiresAt)
+			require.LessOrEqual(t, lastTime, key.expiresAt)
 			lastTime = key.expiresAt
 		}
 	}
@@ -85,26 +85,26 @@ func TestExpirationQueue(t *testing.T) {
 		q.Push(fmt.Sprintf("key-%d", i), time.Millisecond*time.Duration(50+rand.Intn(500)))
 	}
 
-	assert.Equal(t, 104, q.Len())
+	require.Equal(t, 104, q.Len())
 
 	{
 		var lastTime time.Time
 		for _, key := range q.keys {
-			assert.LessOrEqual(t, lastTime, key.expiresAt)
+			require.LessOrEqual(t, lastTime, key.expiresAt)
 			lastTime = key.expiresAt
 		}
 	}
 
 	{
 		keys := q.expiredAt(time.Now())
-		assert.Equal(t, 104, q.Len())
-		assert.Equal(t, 0, len(keys))
+		require.Equal(t, 104, q.Len())
+		require.Equal(t, 0, len(keys))
 	}
 
 	{
 		keys := q.expiredAt(time.Now().Add(time.Second * 10))
-		assert.Equal(t, 0, q.Len())
-		assert.Equal(t, 104, len(keys))
+		require.Equal(t, 0, q.Len())
+		require.Equal(t, 104, len(keys))
 	}
 
 	for i := 0; i < 100; i++ {
@@ -114,19 +114,19 @@ func TestExpirationQueue(t *testing.T) {
 	{
 		var lastTime time.Time
 		for _, key := range q.keys {
-			assert.LessOrEqual(t, lastTime, key.expiresAt)
+			require.LessOrEqual(t, lastTime, key.expiresAt)
 			lastTime = key.expiresAt
 		}
 	}
 
-	assert.Equal(t, 100, q.Len())
+	require.Equal(t, 100, q.Len())
 }
 
 func TestSetEx(t *testing.T) {
 	ctx := context.Background()
 
 	c, err := NewWithSize[[]byte](50)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	{
 		keys := []string{}
@@ -136,26 +136,26 @@ func TestSetEx(t *testing.T) {
 			// SetEx with time 0 is the same as just a Set, because there is no expiry time
 			// aka, the key doesn't expire.
 			err := c.SetEx(ctx, key, []byte("a"), time.Duration(0))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			keys = append(keys, key)
 		}
 
 		for _, key := range keys {
 			buf, exists, err := c.Get(ctx, key)
-			assert.True(t, exists)
-			assert.NoError(t, err)
-			assert.NotNil(t, buf)
+			require.True(t, exists)
+			require.NoError(t, err)
+			require.NotNil(t, buf)
 
 			exists, err = c.Exists(ctx, key)
-			assert.NoError(t, err)
-			assert.True(t, exists)
+			require.NoError(t, err)
+			require.True(t, exists)
 		}
 
 		values, batchExists, err := c.BatchGet(ctx, keys)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		for i := range values {
-			assert.NotNil(t, values[i])
-			assert.True(t, batchExists[i])
+			require.NotNil(t, values[i])
+			require.True(t, batchExists[i])
 		}
 	}
 
@@ -164,27 +164,55 @@ func TestSetEx(t *testing.T) {
 		for i := 0; i < 20; i++ {
 			key := fmt.Sprintf("key-%d", i)
 			err := c.SetEx(ctx, key, []byte("a"), time.Second*10) // a key that expires in 10 seconds
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			keys = append(keys, key)
 		}
 
 		for _, key := range keys {
 			buf, exists, err := c.Get(ctx, key)
-			assert.NoError(t, err)
-			assert.NotNil(t, buf)
-			assert.True(t, exists)
+			require.NoError(t, err)
+			require.NotNil(t, buf)
+			require.True(t, exists)
 
 			exists, err = c.Exists(ctx, key)
-			assert.NoError(t, err)
-			assert.True(t, exists)
+			require.NoError(t, err)
+			require.True(t, exists)
 		}
 
 		values, batchExists, err := c.BatchGet(ctx, keys)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		for i := range values {
-			assert.NotNil(t, values[i])
-			assert.True(t, batchExists[i])
+			require.NotNil(t, values[i])
+			require.True(t, batchExists[i])
 		}
 	}
+}
+
+func TestGetEx(t *testing.T) {
+	ctx := context.Background()
+
+	cache, err := NewWithSize[[]byte](50)
+	require.NoError(t, err)
+
+	err = cache.SetEx(ctx, "hi", []byte("bye"), 10*time.Second)
+	require.NoError(t, err)
+
+	v, ttl, exists, err := cache.GetEx(ctx, "hi")
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.InDelta(t, 10*time.Second, *ttl, float64(1*time.Second), "TTL are not equal within the allowed delta")
+	require.Equal(t, []byte("bye"), v)
+
+	v, ttl, exists, err = cache.GetEx(ctx, "not-found")
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.Nil(t, ttl)
+
+	err = cache.Set(ctx, "without-ttl", []byte("hello"))
+	require.NoError(t, err)
+
+	v, ttl, exists, err = cache.GetEx(ctx, "without-ttl")
+	require.NoError(t, err)
+	require.Nil(t, ttl)
 }

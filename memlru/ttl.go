@@ -74,6 +74,19 @@ func (e *expirationQueue) UpdateLastCheckTime() {
 	e.mu.Unlock()
 }
 
+func (e *expirationQueue) GetItem(key string) (expirationQueueItem, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	for _, i := range e.keys {
+		if i.key == key {
+			return i, true
+		}
+	}
+
+	return expirationQueueItem{}, false
+}
+
 func (e *expirationQueue) expiredAt(t time.Time) []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()

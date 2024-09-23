@@ -41,6 +41,12 @@ func (s *NoStore[V]) SetEx(ctx context.Context, key string, value V, ttl time.Du
 	return nil
 }
 
+func (c *NoStore[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
+	var out V
+	ttl := time.Duration(0)
+	return out, &ttl, false, nil
+}
+
 func (s *NoStore[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
 	return nil
 }

@@ -24,6 +24,10 @@ type Store[V any] interface {
 	// for that key.
 	SetEx(ctx context.Context, key string, value V, ttl time.Duration) error
 
+	// GetEx returns a stored value with ttl
+	// duration is nil when key does not have ttl set
+	GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error)
+
 	// BatchSet sets all the values associated to the given keys.
 	BatchSet(ctx context.Context, keys []string, values []V) error
 

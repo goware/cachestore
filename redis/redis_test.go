@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/goware/cachestore"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -249,14 +248,45 @@ func TestGetOrSetWithLock(t *testing.T) {
 	}
 
 	require.NoError(t, wg.Wait())
-	assert.Equalf(t, 1, int(counter.Load()), "getter should be called only once")
+	require.Equalf(t, 1, int(counter.Load()), "getter should be called only once")
 
 	for i := 0; i < concurrentCalls; i++ {
 		select {
 		case v := <-results:
-			assert.Equal(t, "result:"+key, v)
+			require.Equal(t, "result:"+key, v)
 		default:
 			t.Errorf("expected %d results but only got %d", concurrentCalls, i)
 		}
 	}
+}
+
+func TestGetEx(t *testing.T) {
+	ctx := context.Background()
+
+	cache, err := New[string](&Config{Enabled: true, Host: "localhost"}, cachestore.WithDefaultKeyExpiry(-1*time.Second))
+	require.NoError(t, err)
+
+	_, ok := cache.(*RedisStore[string])
+	require.True(t, ok)
+
+	err = cache.SetEx(ctx, "hi", "bye", 10*time.Second)
+	require.NoError(t, err)
+
+	v, ttl, exists, err := cache.GetEx(ctx, "hi")
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.InDelta(t, 10*time.Second, *ttl, float64(1*time.Second), "TTL are not equal within the allowed delta")
+	require.Equal(t, "bye", v)
+
+	v, ttl, exists, err = cache.GetEx(ctx, "not-found")
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.Nil(t, ttl)
+
+	err = cache.Set(ctx, "without-ttl", "hello")
+	require.NoError(t, err)
+
+	v, ttl, exists, err = cache.GetEx(ctx, "without-ttl")
+	require.NoError(t, err)
+	require.Nil(t, ttl)
 }

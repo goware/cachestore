@@ -11,10 +11,9 @@ import (
 )
 
 func main() {
-
 	mstore, err := memlru.New[string]()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	rstore, err := redis.New[string](&redis.Config{
@@ -23,7 +22,7 @@ func main() {
 		Port:    6379,
 	})
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	// Compose a store chain where we set/get keys in order of:
@@ -33,7 +32,7 @@ func main() {
 	// local cache in memory, and search the remote redis cache if its not in memory.
 	store, err := cachestore.Compose(mstore, rstore)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	ctx := context.Background()
@@ -44,7 +43,7 @@ func main() {
 		for i := 0; i < 100; i++ {
 			err = store.Set(ctx, fmt.Sprintf("foo:%d", i), fmt.Sprintf("value-%d", i))
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 		}
 	}
