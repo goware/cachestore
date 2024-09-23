@@ -3,7 +3,6 @@ package memlru
 import (
 	"context"
 	"fmt"
-	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -202,18 +201,18 @@ func TestGetEx(t *testing.T) {
 	v, ttl, exists, err := cache.GetEx(ctx, "hi")
 	require.NoError(t, err)
 	require.True(t, exists)
-	require.InDelta(t, 10*time.Second, ttl, float64(1*time.Second), "TTL are not equal within the allowed delta")
+	require.InDelta(t, 10*time.Second, *ttl, float64(1*time.Second), "TTL are not equal within the allowed delta")
 	require.Equal(t, []byte("bye"), v)
 
 	v, ttl, exists, err = cache.GetEx(ctx, "not-found")
 	require.NoError(t, err)
 	require.False(t, exists)
-	require.Equal(t, time.Duration(0), ttl)
+	require.Nil(t, ttl)
 
 	err = cache.Set(ctx, "without-ttl", []byte("hello"))
 	require.NoError(t, err)
 
 	v, ttl, exists, err = cache.GetEx(ctx, "without-ttl")
 	require.NoError(t, err)
-	require.InDelta(t, time.Duration(math.MaxInt64), ttl, float64(2*time.Second), "TTL are not equal within the allowed delta")
+	require.Nil(t, ttl)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -117,26 +116,28 @@ func (m *MemLRU[V]) BatchSetEx(ctx context.Context, keys []string, values []V, t
 	return nil
 }
 
-func (c *MemLRU[V]) GetEx(ctx context.Context, key string) (out V, ttl time.Duration, exists bool, err error) {
-	out, exists, err = c.Get(ctx, key)
+func (c *MemLRU[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
+	out, exists, err := c.Get(ctx, key)
 	if err != nil {
-		return out, 0, false, fmt.Errorf("get %w", err)
+		return out, nil, false, fmt.Errorf("get %w", err)
 	}
 
 	if !exists {
-		return out, 0, false, nil
+		return out, nil, false, nil
 	}
 
 	item, ok := c.expirationQueue.GetItem(key)
 	if !ok {
-		return out, time.Duration(math.MaxInt64), true, nil
+		return out, nil, true, nil
 	}
 
 	if item.expiresAt.Before(time.Now()) {
-		return out, 0, false, nil
+		return out, nil, false, nil
 	}
 
-	return out, item.expiresAt.Sub(time.Now()), true, nil
+	ttl := item.expiresAt.Sub(time.Now())
+
+	return out, &ttl, true, nil
 }
 
 func (m *MemLRU[V]) Get(ctx context.Context, key string) (V, bool, error) {

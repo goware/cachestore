@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"reflect"
 	"time"
 
@@ -182,9 +181,9 @@ func (c *RedisStore[V]) BatchSetEx(ctx context.Context, keys []string, values []
 	return nil
 }
 
-func (c *RedisStore[V]) GetEx(ctx context.Context, key string) (V, time.Duration, bool, error) {
+func (c *RedisStore[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
 	var out V
-	var ttl time.Duration
+	var ttl *time.Duration
 
 	_, err := c.client.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		var err error
@@ -200,13 +199,15 @@ func (c *RedisStore[V]) GetEx(ctx context.Context, key string) (V, time.Duration
 			return fmt.Errorf("exec: %w", err)
 		}
 
-		ttl, err = getTTL.Result()
+		ttlRes, err := getTTL.Result()
 		if err != nil {
 			return fmt.Errorf("TTL command failed: %w", err)
 		}
 
-		if ttl == -1 {
-			ttl = time.Duration(math.MaxInt64)
+		if ttlRes == -1 {
+			ttl = nil
+		} else {
+			ttl = &ttlRes
 		}
 
 		data, err := getVal.Bytes()
