@@ -104,7 +104,9 @@ func (g *GCStorage[V]) GetEx(ctx context.Context, key string) (V, *time.Duration
 
 	obj := g.bucketHandle.Object(g.cfg.Prefix + key)
 	r, err := obj.NewReader(ctx)
-	if err != nil {
+	if err != nil && errors.Is(err, storage.ErrObjectNotExist) {
+		return out.Object, nil, false, nil
+	} else if err != nil {
 		return out.Object, nil, false, err
 	}
 	defer r.Close()
