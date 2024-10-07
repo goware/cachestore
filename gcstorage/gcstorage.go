@@ -87,7 +87,7 @@ func (g *GCStorage[V]) Set(ctx context.Context, key string, value V) error {
 func (g *GCStorage[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
 	var expiresAt time.Time
 	if ttl != 0 {
-		expiresAt = time.Now().Add(g.defaultKeyExpiry)
+		expiresAt = time.Now().Add(ttl)
 	}
 
 	data, err := serialize[cacheObject[V]](cacheObject[V]{
