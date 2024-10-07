@@ -11,6 +11,7 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/goware/cachestore"
 	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 )
 
 var ErrNotSupported = fmt.Errorf("not supported")
@@ -21,7 +22,9 @@ type cacheObject[T any] struct {
 }
 
 type GCStorage[V any] struct {
-	cfg *Config
+	keyPrefix string
+
+	defaultKeyExpiry time.Duration
 
 	client       *storage.Client
 	bucketHandle *storage.BucketHandle
@@ -33,29 +36,42 @@ func Backend(cfg *Config, opts ...cachestore.StoreOptions) cachestore.Backend {
 	return cfg
 }
 
-func New[V any](backend cachestore.Backend, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
+func NewWithBackend[V any](backend cachestore.Backend, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
 	cfg, ok := backend.(*Config)
 	if !ok {
-		return nil, fmt.Errorf("cachestore/gcstorage: invalid backend config supplied")
+		return nil, fmt.Errorf("cachestore/redis: invalid backend config supplied")
 	}
 	for _, opt := range opts {
 		opt.Apply(&cfg.StoreOptions)
 	}
+	return New[V](cfg, cfg.StoreOptions)
+}
 
-	client, err := storage.NewClient(context.Background())
+func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
+	for _, opt := range opts {
+		opt.Apply(&cfg.StoreOptions)
+	}
+
+	var gcOpts []option.ClientOption
+	if cfg.Credentials != nil {
+		gcOpts = append(gcOpts, option.WithCredentials(cfg.Credentials))
+	}
+
+	client, err := storage.NewClient(context.Background(), gcOpts...)
 	if err != nil {
 		return nil, err
 	}
 
 	return &GCStorage[V]{
-		cfg:          cfg,
-		client:       client,
-		bucketHandle: client.Bucket(cfg.Bucket),
+		keyPrefix:        cfg.KeyPrefix,
+		defaultKeyExpiry: cfg.DefaultKeyExpiry,
+		client:           client,
+		bucketHandle:     client.Bucket(cfg.Bucket),
 	}, nil
 }
 
 func (g *GCStorage[V]) Exists(ctx context.Context, key string) (bool, error) {
-	_, err := g.bucketHandle.Object(g.cfg.Prefix + key).Attrs(ctx)
+	_, err := g.bucketHandle.Object(g.keyPrefix + key).Attrs(ctx)
 	if err != nil && errors.Is(err, storage.ErrObjectNotExist) {
 		return false, nil
 	} else if err != nil {
@@ -65,13 +81,13 @@ func (g *GCStorage[V]) Exists(ctx context.Context, key string) (bool, error) {
 }
 
 func (g *GCStorage[V]) Set(ctx context.Context, key string, value V) error {
-	return g.SetEx(ctx, key, value, g.cfg.DefaultKeyExpiry)
+	return g.SetEx(ctx, key, value, g.defaultKeyExpiry)
 }
 
 func (g *GCStorage[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
 	var expiresAt time.Time
 	if ttl != 0 {
-		expiresAt = time.Now().Add(g.cfg.DefaultKeyExpiry)
+		expiresAt = time.Now().Add(g.defaultKeyExpiry)
 	}
 
 	data, err := serialize[cacheObject[V]](cacheObject[V]{
@@ -82,10 +98,11 @@ func (g *GCStorage[V]) SetEx(ctx context.Context, key string, value V, ttl time.
 		return err
 	}
 
-	obj := g.bucketHandle.Object(g.cfg.Prefix + key)
+	obj := g.bucketHandle.Object(g.keyPrefix + key)
 	w := obj.NewWriter(ctx)
 	w.ObjectAttrs.ContentType = "application/json"
 	if _, err := w.Write(data); err != nil {
+		_ = w.Close()
 		return err
 	}
 	if err := w.Close(); err != nil {
@@ -102,7 +119,7 @@ func (g *GCStorage[V]) Get(ctx context.Context, key string) (V, bool, error) {
 func (g *GCStorage[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
 	var out cacheObject[V]
 
-	obj := g.bucketHandle.Object(g.cfg.Prefix + key)
+	obj := g.bucketHandle.Object(g.keyPrefix + key)
 	r, err := obj.NewReader(ctx)
 	if err != nil && errors.Is(err, storage.ErrObjectNotExist) {
 		return out.Object, nil, false, nil
@@ -130,7 +147,7 @@ func (g *GCStorage[V]) GetEx(ctx context.Context, key string) (V, *time.Duration
 }
 
 func (g *GCStorage[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
-	return g.BatchSetEx(ctx, keys, values, g.cfg.DefaultKeyExpiry)
+	return g.BatchSetEx(ctx, keys, values, g.defaultKeyExpiry)
 }
 
 func (g *GCStorage[V]) BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error {
@@ -157,13 +174,13 @@ func (g *GCStorage[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool
 }
 
 func (g *GCStorage[V]) Delete(ctx context.Context, key string) error {
-	obj := g.bucketHandle.Object(g.cfg.Prefix + key)
+	obj := g.bucketHandle.Object(g.keyPrefix + key)
 	return obj.Delete(ctx)
 }
 
 func (g *GCStorage[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	objIt := g.bucketHandle.Objects(ctx, &storage.Query{
-		Prefix: g.cfg.Prefix + keyPrefix,
+		Prefix: g.keyPrefix + keyPrefix,
 	})
 
 	for {
@@ -184,7 +201,7 @@ func (g *GCStorage[V]) DeletePrefix(ctx context.Context, keyPrefix string) error
 
 func (g *GCStorage[V]) ClearAll(ctx context.Context) error {
 	objIt := g.bucketHandle.Objects(ctx, &storage.Query{
-		Prefix: g.cfg.Prefix,
+		Prefix: g.keyPrefix,
 	})
 
 	for {
