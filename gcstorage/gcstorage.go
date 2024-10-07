@@ -183,7 +183,23 @@ func (g *GCStorage[V]) DeletePrefix(ctx context.Context, keyPrefix string) error
 }
 
 func (g *GCStorage[V]) ClearAll(ctx context.Context) error {
-	return ErrNotSupported
+	objIt := g.bucketHandle.Objects(ctx, &storage.Query{
+		Prefix: g.cfg.Prefix,
+	})
+
+	for {
+		objAttrs, err := objIt.Next()
+		if err != nil && errors.Is(err, iterator.Done) {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		if err = g.bucketHandle.Object(objAttrs.Name).Delete(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (g *GCStorage[V]) GetOrSetWithLock(ctx context.Context, key string, getter func(context.Context, string) (V, error)) (V, error) {
