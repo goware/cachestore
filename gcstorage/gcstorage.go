@@ -65,9 +65,14 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 		return nil, fmt.Errorf("cachestore/gcstorage: new client returned error: %w", err)
 	}
 
+	if cfg.DefaultKeyExpiry == 0 {
+		cfg.DefaultKeyExpiry = DefaultTTL
+	}
+
 	return &GCStorage[V]{
 		keyPrefix:        cfg.KeyPrefix,
 		defaultKeyExpiry: cmp.Or(cfg.DefaultKeyExpiry, DefaultTTL),
+
 		client:           client,
 		bucketHandle:     client.Bucket(cfg.Bucket),
 	}, nil
