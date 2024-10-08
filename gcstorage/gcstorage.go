@@ -71,7 +71,7 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 
 	return &GCStorage[V]{
 		keyPrefix:        cfg.KeyPrefix,
-		defaultKeyExpiry: cmp.Or(cfg.DefaultKeyExpiry, DefaultTTL),
+		defaultKeyExpiry: cfg.DefaultKeyExpiry,
 
 		client:           client,
 		bucketHandle:     client.Bucket(cfg.Bucket),
