@@ -162,7 +162,7 @@ func (g *GCStorage[V]) GetEx(ctx context.Context, key string) (V, *time.Duration
 		return *new(V), nil, false, fmt.Errorf("cachestore/gcstorage: deserialize error: %w", err)
 	}
 
-	if value.ExpiresAt != (time.Time{}) && value.ExpiresAt.Before(time.Now()) {
+	if !value.ExpiresAt.IsZero() && value.ExpiresAt.Before(time.Now()) {
 		return *new(V), nil, false, nil
 	}
 
