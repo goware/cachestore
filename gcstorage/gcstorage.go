@@ -88,7 +88,7 @@ func (g *GCStorage[V]) Exists(ctx context.Context, key string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if expiresAt != (time.Time{}) && expiresAt.Before(time.Now()) {
+		if !expiresAt.IsZero() && expiresAt.Before(time.Now()) {
 			return false, nil
 		}
 	}
