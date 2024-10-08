@@ -149,7 +149,6 @@ func (g *GCStorage[V]) GetEx(ctx context.Context, key string) (V, *time.Duration
 		}
 		return *new(V), nil, false, fmt.Errorf("cachestore/gcstorage: new reader error: %w", err)
 	}
-
 	defer r.Close()
 
 	data, err := io.ReadAll(r)
@@ -254,13 +253,11 @@ func (g *GCStorage[V]) ClearAll(ctx context.Context) error {
 }
 
 func (g *GCStorage[V]) GetOrSetWithLock(ctx context.Context, key string, getter func(context.Context, string) (V, error)) (V, error) {
-	var out V
-	return out, cachestore.ErrNotSupported
+	return *new(V), cachestore.ErrNotSupported
 }
 
 func (g *GCStorage[V]) GetOrSetWithLockEx(ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration) (V, error) {
-	var out V
-	return out, cachestore.ErrNotSupported
+	return *new(V), cachestore.ErrNotSupported
 }
 
 func serialize[V any](value V) ([]byte, error) {
