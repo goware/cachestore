@@ -269,6 +269,10 @@ func serialize[V any](value V) ([]byte, error) {
 
 func deserialize[V any](data []byte) (V, error) {
 	var out V
-	err := json.Unmarshal(data, &out)
-	return out, err
+	if err := json.Unmarshal(data, &out); err != nil {
+		return *new(V), err
+	}
+
+	return out, nil
+
 }
