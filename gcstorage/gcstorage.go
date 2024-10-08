@@ -1,6 +1,7 @@
 package gcstorage
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,7 +15,7 @@ import (
 	"google.golang.org/api/option"
 )
 
-var ErrNotSupported = fmt.Errorf("not supported")
+const DefaultTTL = time.Second * 24 * 60 * 60 // 1 day in seconds
 
 type cacheObject[T any] struct {
 	Object    T         `json:"object"`
@@ -61,12 +62,12 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 
 	client, err := storage.NewClient(context.Background(), gcOpts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cachestore/gcstorage: new client returned error: %w", err)
 	}
 
 	return &GCStorage[V]{
 		keyPrefix:        cfg.KeyPrefix,
-		defaultKeyExpiry: cfg.DefaultKeyExpiry,
+		defaultKeyExpiry: cmp.Or(cfg.DefaultKeyExpiry, DefaultTTL),
 		client:           client,
 		bucketHandle:     client.Bucket(cfg.Bucket),
 	}, nil
@@ -78,15 +79,13 @@ func (g *GCStorage[V]) Exists(ctx context.Context, key string) (bool, error) {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			return false, nil
 		}
-		
-		return false, err
+		return false, fmt.Errorf("cachestore/gcstorage: get attrs returned error: %w", err)
 	}
-
 
 	if attr.Metadata["expires_at"] != "" {
 		expiresAt, err := time.Parse(time.RFC3339, attr.Metadata["expires_at"])
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("cachestore/gcstorage: time parse returned error: %w", err)
 		}
 		if !expiresAt.IsZero() && expiresAt.Before(time.Now()) {
 			return false, nil
@@ -100,6 +99,13 @@ func (g *GCStorage[V]) Set(ctx context.Context, key string, value V) error {
 }
 
 func (g *GCStorage[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
+	if len(key) > cachestore.MaxKeyLength {
+		return fmt.Errorf("cachestore/gcstorage: %w", cachestore.ErrKeyLengthTooLong)
+	}
+	if len(key) == 0 {
+		return fmt.Errorf("cachestore/gcstorage: %w", cachestore.ErrInvalidKey)
+	}
+
 	var expiresAt time.Time
 	if ttl != 0 {
 		expiresAt = time.Now().Add(ttl)
@@ -121,10 +127,10 @@ func (g *GCStorage[V]) SetEx(ctx context.Context, key string, value V, ttl time.
 	}
 	if _, err := w.Write(data); err != nil {
 		_ = w.Close()
-		return err
+		return fmt.Errorf("cachestore/gcstorage: write returned error: %w", err)
 	}
 	if err := w.Close(); err != nil {
-		return err
+		return fmt.Errorf("cachestore/gcstorage: close returned error: %w", err)
 	}
 	return nil
 }
@@ -135,32 +141,29 @@ func (g *GCStorage[V]) Get(ctx context.Context, key string) (V, bool, error) {
 }
 
 func (g *GCStorage[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
-	var errReturnObj V
-
 	obj := g.bucketHandle.Object(g.keyPrefix + key)
 	r, err := obj.NewReader(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			return errReturnObj, nil, false, nil
+			return *new(V), nil, false, nil
 		}
-
-		return errReturnObj, nil, false, err
+		return *new(V), nil, false, fmt.Errorf("cachestore/gcstorage: new reader error: %w", err)
 	}
 
 	defer r.Close()
 
 	data, err := io.ReadAll(r)
 	if err != nil {
-		return errReturnObj, nil, false, err
+		return *new(V), nil, false, fmt.Errorf("cachestore/gcstorage: read all error: %w", err)
 	}
 
 	value, err := deserialize[cacheObject[V]](data)
 	if err != nil {
-		return errReturnObj, nil, false, err
+		return *new(V), nil, false, fmt.Errorf("cachestore/gcstorage: deserialize error: %w", err)
 	}
 
 	if value.ExpiresAt != (time.Time{}) && value.ExpiresAt.Before(time.Now()) {
-		return errReturnObj, nil, false, nil
+		return *new(V), nil, false, nil
 	}
 
 	ttl := value.ExpiresAt.Sub(time.Now())
@@ -200,20 +203,28 @@ func (g *GCStorage[V]) Delete(ctx context.Context, key string) error {
 }
 
 func (g *GCStorage[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
+	if len(keyPrefix) > cachestore.MaxKeyLength {
+		return fmt.Errorf("cachestore/gcstorage: %w", cachestore.ErrInvalidKeyPrefix)
+	}
+	if len(keyPrefix) < 4 {
+		return fmt.Errorf("cachestore/gcstorage: %w", cachestore.ErrInvalidKeyPrefix)
+	}
+
 	objIt := g.bucketHandle.Objects(ctx, &storage.Query{
 		Prefix: g.keyPrefix + keyPrefix,
 	})
 
 	for {
 		objAttrs, err := objIt.Next()
-		if err != nil && errors.Is(err, iterator.Done) {
-			break
-		} else if err != nil {
-			return err
+		if err != nil {
+			if errors.Is(err, iterator.Done) {
+				break
+			}
+			return fmt.Errorf("cachestore/gcstorage: it next error: %w", err)
 		}
 
 		if err = g.bucketHandle.Object(objAttrs.Name).Delete(ctx); err != nil {
-			return err
+			return fmt.Errorf("cachestore/gcstorage: object delete error: %w", err)
 		}
 	}
 
@@ -227,14 +238,15 @@ func (g *GCStorage[V]) ClearAll(ctx context.Context) error {
 
 	for {
 		objAttrs, err := objIt.Next()
-		if err != nil && errors.Is(err, iterator.Done) {
-			break
-		} else if err != nil {
-			return err
+		if err != nil {
+			if errors.Is(err, iterator.Done) {
+				break
+			}
+			return fmt.Errorf("cachestore/gcstorage: it next error: %w", err)
 		}
 
 		if err = g.bucketHandle.Object(objAttrs.Name).Delete(ctx); err != nil {
-			return err
+			return fmt.Errorf("cachestore/gcstorage: object delete error: %w", err)
 		}
 	}
 	return nil
@@ -242,12 +254,12 @@ func (g *GCStorage[V]) ClearAll(ctx context.Context) error {
 
 func (g *GCStorage[V]) GetOrSetWithLock(ctx context.Context, key string, getter func(context.Context, string) (V, error)) (V, error) {
 	var out V
-	return out, ErrNotSupported
+	return out, cachestore.ErrNotSupported
 }
 
 func (g *GCStorage[V]) GetOrSetWithLockEx(ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration) (V, error) {
 	var out V
-	return out, ErrNotSupported
+	return out, cachestore.ErrNotSupported
 }
 
 func serialize[V any](value V) ([]byte, error) {
