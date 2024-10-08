@@ -16,6 +16,7 @@ func setup(t *testing.T) {
 	_ = exec.Command(`docker`, `rm`, `-f`, `gcp-storage-emulator`).Run()
 
 	err := exec.Command(`docker`, `pull`, `oittaa/gcp-storage-emulator`).Run()
+	require.NoError(t, err)
 
 	emulator = exec.Command(`docker`, `run`, `-e`, `PORT=9023`, `-p`, `9023:9023`, `--name`, `gcp-storage-emulator`,
 		`oittaa/gcp-storage-emulator`, `start`, `--port=9023`, `--in-memory`, `--default-bucket=my-bucket`)
