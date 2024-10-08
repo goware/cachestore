@@ -166,7 +166,7 @@ func (g *GCStorage[V]) GetEx(ctx context.Context, key string) (V, *time.Duration
 		return *new(V), nil, false, nil
 	}
 
-	ttl := value.ExpiresAt.Sub(time.Now())
+	ttl := time.Until(value.ExpiresAt)
 	return value.Object, &ttl, true, nil
 }
 
