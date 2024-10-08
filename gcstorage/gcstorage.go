@@ -71,11 +71,21 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 }
 
 func (g *GCStorage[V]) Exists(ctx context.Context, key string) (bool, error) {
-	_, err := g.bucketHandle.Object(g.keyPrefix + key).Attrs(ctx)
+	attr, err := g.bucketHandle.Object(g.keyPrefix + key).Attrs(ctx)
 	if err != nil && errors.Is(err, storage.ErrObjectNotExist) {
 		return false, nil
 	} else if err != nil {
 		return false, err
+	}
+
+	if attr.Metadata["expires_at"] != "" {
+		expiresAt, err := time.Parse(time.RFC3339, attr.Metadata["expires_at"])
+		if err != nil {
+			return false, err
+		}
+		if expiresAt != (time.Time{}) && expiresAt.Before(time.Now()) {
+			return false, nil
+		}
 	}
 	return true, nil
 }
@@ -101,6 +111,9 @@ func (g *GCStorage[V]) SetEx(ctx context.Context, key string, value V, ttl time.
 	obj := g.bucketHandle.Object(g.keyPrefix + key)
 	w := obj.NewWriter(ctx)
 	w.ObjectAttrs.ContentType = "application/json"
+	w.ObjectAttrs.Metadata = map[string]string{
+		"expires_at": expiresAt.Format(time.RFC3339),
+	}
 	if _, err := w.Write(data); err != nil {
 		_ = w.Close()
 		return err
@@ -117,33 +130,33 @@ func (g *GCStorage[V]) Get(ctx context.Context, key string) (V, bool, error) {
 }
 
 func (g *GCStorage[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
-	var out cacheObject[V]
+	var errReturnObj V
 
 	obj := g.bucketHandle.Object(g.keyPrefix + key)
 	r, err := obj.NewReader(ctx)
 	if err != nil && errors.Is(err, storage.ErrObjectNotExist) {
-		return out.Object, nil, false, nil
+		return errReturnObj, nil, false, nil
 	} else if err != nil {
-		return out.Object, nil, false, err
+		return errReturnObj, nil, false, err
 	}
 	defer r.Close()
 
 	data, err := io.ReadAll(r)
 	if err != nil {
-		return out.Object, nil, false, err
+		return errReturnObj, nil, false, err
 	}
 
-	out, err = deserialize[cacheObject[V]](data)
+	value, err := deserialize[cacheObject[V]](data)
 	if err != nil {
-		return out.Object, nil, false, err
+		return errReturnObj, nil, false, err
 	}
 
-	if out.ExpiresAt != (time.Time{}) && out.ExpiresAt.Before(time.Now()) {
-		return out.Object, nil, false, nil
+	if value.ExpiresAt != (time.Time{}) && value.ExpiresAt.Before(time.Now()) {
+		return errReturnObj, nil, false, nil
 	}
 
-	ttl := out.ExpiresAt.Sub(time.Now())
-	return out.Object, &ttl, true, nil
+	ttl := value.ExpiresAt.Sub(time.Now())
+	return value.Object, &ttl, true, nil
 }
 
 func (g *GCStorage[V]) BatchSet(ctx context.Context, keys []string, values []V) error {

@@ -12,7 +12,7 @@ import (
 
 func main() {
 	cfg := &gcstorage.Config{
-		Bucket:    "test-bucket",
+		Bucket:    "sequence-dev-cluster-indexer-wal",
 		KeyPrefix: "test/",
 	}
 
@@ -35,6 +35,16 @@ func main() {
 
 	store.SetEx(ctx, "foo:999", "value-999", 10*time.Minute)
 
+	// Exists
+	ok, err := store.Exists(ctx, "foo:9")
+	if err != nil {
+		panic(err)
+	}
+	if !ok {
+		panic("unexpected")
+	}
+	fmt.Println("=> exists(foo:9) =", ok)
+
 	// Get
 	v, ok, err := store.Get(ctx, "foo:9")
 	if err != nil {
@@ -48,6 +58,15 @@ func main() {
 	time.Sleep(30 * time.Second)
 
 	// should expire based on rule above
+	ok, err = store.Exists(ctx, "foo:9")
+	if err != nil {
+		panic(err)
+	}
+	if ok {
+		panic("unexpected")
+	}
+	fmt.Println("=> exists(foo:9) =", ok)
+
 	v, ok, err = store.Get(ctx, "foo:9")
 	if err != nil {
 		panic(err)
