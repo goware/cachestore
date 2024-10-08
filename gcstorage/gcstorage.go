@@ -105,7 +105,7 @@ func (g *GCStorage[V]) SetEx(ctx context.Context, key string, value V, ttl time.
 		expiresAt = time.Now().Add(ttl)
 	}
 
-	data, err := serialize[cacheObject[V]](cacheObject[V]{
+	data, err := serialize(cacheObject[V]{
 		Object:    value,
 		ExpiresAt: expiresAt,
 	})
