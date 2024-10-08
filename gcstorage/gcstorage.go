@@ -74,11 +74,14 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 
 func (g *GCStorage[V]) Exists(ctx context.Context, key string) (bool, error) {
 	attr, err := g.bucketHandle.Object(g.keyPrefix + key).Attrs(ctx)
-	if err != nil && errors.Is(err, storage.ErrObjectNotExist) {
-		return false, nil
-	} else if err != nil {
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return false, nil
+		}
+		
 		return false, err
 	}
+
 
 	if attr.Metadata["expires_at"] != "" {
 		expiresAt, err := time.Parse(time.RFC3339, attr.Metadata["expires_at"])
