@@ -200,8 +200,7 @@ func (g *GCStorage[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool
 }
 
 func (g *GCStorage[V]) Delete(ctx context.Context, key string) error {
-	obj := g.bucketHandle.Object(g.keyPrefix + key)
-	return obj.Delete(ctx)
+	return g.bucketHandle.Object(g.keyPrefix + key).Delete(ctx)
 }
 
 func (g *GCStorage[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
