@@ -12,7 +12,7 @@ import (
 
 func main() {
 	cfg := &gcstorage.Config{
-		Bucket:    "sequence-dev-cluster-indexer-wal",
+		Bucket:    "test-bucket",
 		KeyPrefix: "test/",
 	}
 
