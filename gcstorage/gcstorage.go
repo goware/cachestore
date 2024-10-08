@@ -21,6 +21,8 @@ type cacheObject[T any] struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+var _ cachestore.Store[any] = &GCStorage[any]{}
+
 type GCStorage[V any] struct {
 	keyPrefix string
 
