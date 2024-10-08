@@ -56,13 +56,13 @@ func setup(t *testing.T) {
 	time.Sleep(5 * time.Second)
 }
 
-func teardown(t *testing.T) {
+func teardown() {
 	exec.Command(`docker`, `rm`, `-f`, `gcp-storage-emulator`).Run()
 }
 
 func TestGCStorage(t *testing.T) {
 	setup(t)
-	defer teardown(t)
+	defer teardown()
 
 	cfg := &Config{
 		Bucket:    "my-bucket",
