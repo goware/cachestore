@@ -41,7 +41,7 @@ func Backend(cfg *Config, opts ...cachestore.StoreOptions) cachestore.Backend {
 func NewWithBackend[V any](backend cachestore.Backend, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
 	cfg, ok := backend.(*Config)
 	if !ok {
-		return nil, fmt.Errorf("cachestore/redis: invalid backend config supplied")
+		return nil, fmt.Errorf("cachestore/gcstorage: invalid backend config supplied")
 	}
 	for _, opt := range opts {
 		opt.Apply(&cfg.StoreOptions)
