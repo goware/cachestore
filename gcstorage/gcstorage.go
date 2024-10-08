@@ -271,5 +271,4 @@ func deserialize[V any](data []byte) (V, error) {
 	}
 
 	return out, nil
-
 }
