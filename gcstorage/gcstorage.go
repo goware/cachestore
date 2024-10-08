@@ -139,11 +139,14 @@ func (g *GCStorage[V]) GetEx(ctx context.Context, key string) (V, *time.Duration
 
 	obj := g.bucketHandle.Object(g.keyPrefix + key)
 	r, err := obj.NewReader(ctx)
-	if err != nil && errors.Is(err, storage.ErrObjectNotExist) {
-		return errReturnObj, nil, false, nil
-	} else if err != nil {
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return errReturnObj, nil, false, nil
+		}
+
 		return errReturnObj, nil, false, err
 	}
+
 	defer r.Close()
 
 	data, err := io.ReadAll(r)
