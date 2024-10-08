@@ -184,16 +184,18 @@ func (g *GCStorage[V]) BatchSetEx(ctx context.Context, keys []string, values []V
 }
 
 func (g *GCStorage[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool, error) {
-	var out []V
-	var exists []bool
-	for _, key := range keys {
+	out := make([]V, len(keys))
+	exists := make([]bool, len(keys))
+	for i, key := range keys {
 		value, exist, err := g.Get(ctx, key)
 		if err != nil {
 			return nil, nil, err
 		}
-		out = append(out, value)
-		exists = append(exists, exist)
+
+		out[i] = value
+		exists[i] = exist
 	}
+
 	return out, exists, nil
 }
 
