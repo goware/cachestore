@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/goware/cachestore"
+	"github.com/goware/cachestore/gcstorage"
 	"github.com/goware/cachestore/memlru"
 	"github.com/goware/cachestore/nostore"
 	"github.com/goware/cachestore/redis"
@@ -12,6 +13,8 @@ import (
 func Open[T any](backend cachestore.Backend, opts ...cachestore.StoreOptions) (cachestore.Store[T], error) {
 	switch t := backend.(type) {
 
+	case *gcstorage.Config:
+		return gcstorage.NewWithBackend[T](backend, opts...)
 	case *memlru.Config:
 		return memlru.NewWithBackend[T](backend, opts...)
 

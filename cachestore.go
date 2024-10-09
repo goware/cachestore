@@ -11,6 +11,8 @@ var (
 
 	ErrKeyLengthTooLong = errors.New("cachestore: key length is too long")
 	ErrInvalidKey       = errors.New("cachestore: invalid key")
+	ErrInvalidKeyPrefix = errors.New("cachestore: invalid key prefix")
+	ErrNotSupported     = errors.New("cachestore: not supported")
 )
 
 type Store[V any] interface {
