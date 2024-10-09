@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"cloud.google.com/go/storage"
+	"github.com/goware/cachestore"
 	"github.com/stretchr/testify/require"
 )
 
@@ -101,6 +103,23 @@ func TestGCStorage(t *testing.T) {
 		require.False(t, ok)
 	})
 
+	t.Run("Exists_Expiry", func(t *testing.T) {
+		ctx := context.Background()
+
+		err = store.SetEx(ctx, "foo", "bar", 1*time.Second)
+		require.NoError(t, err)
+
+		ok, err := store.Exists(ctx, "foo")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		time.Sleep(2 * time.Second)
+
+		ok, err = store.Exists(ctx, "foo")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
 	t.Run("Delete", func(t *testing.T) {
 		ctx := context.Background()
 
@@ -180,5 +199,34 @@ func TestGCStorage(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []string{"", "", ""}, values)
 		require.Equal(t, []bool{false, false, false}, exists)
+	})
+
+	t.Run("CleanExpiredEvery", func(t *testing.T) {
+		ctx := context.Background()
+
+		// Set a key with 1 second expiry
+		err = store.SetEx(ctx, "foo", "bar", 1*time.Second)
+		require.NoError(t, err)
+
+		time.Sleep(2 * time.Second)
+
+		// Start the cleaner
+		cCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		storeCleaner, ok := store.(cachestore.StoreCleaner)
+		require.True(t, ok)
+
+		go storeCleaner.CleanExpiredEvery(cCtx, 1*time.Second, nil)
+
+		// Wait for cleaner to clean the expired key
+		time.Sleep(2 * time.Second)
+
+		// Check if the key is deleted
+		gcsClient, err := storage.NewClient(ctx)
+		require.NoError(t, err)
+
+		_, err = gcsClient.Bucket("my-bucket").Object("test/foo.cachestore").Attrs(ctx)
+		require.ErrorIs(t, err, storage.ErrObjectNotExist)
 	})
 }
