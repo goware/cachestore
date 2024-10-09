@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -17,12 +18,15 @@ import (
 
 const DefaultTTL = time.Second * 24 * 60 * 60 // 1 day in seconds
 
+const keySuffix = ".cachestore"
+
 type cacheObject[T any] struct {
 	Object    T         `json:"object"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
 var _ cachestore.Store[any] = &GCStorage[any]{}
+var _ cachestore.StoreCleaner = &GCStorage[any]{}
 
 type GCStorage[V any] struct {
 	keyPrefix string
@@ -50,6 +54,20 @@ func NewWithBackend[V any](backend cachestore.Backend, opts ...cachestore.StoreO
 	return New[V](cfg, cfg.StoreOptions)
 }
 
+// New creates a new GCStorage instance.
+//
+// The GCStorage instance is a cachestore.Store implementation that uses Google Cloud Storage as the backend. The object
+// is serialized to JSON and stored in the bucket. The key is prefixed with the keyPrefix and the object is stored in the
+// bucket with the keyPrefix + key + `.cachestore`. The object is stored with a custom time of the expiry time.
+//
+// Please note that: The Google Cloud Storage bucket must have proper Object Lifecycle Management rules to delete
+// the objects after expiry automatically. In case the bucket does not have Object Lifecycle Management rules, the
+// objects will not be deleted. In that case the objects will be deleted only if CleanExpiredEvery is working in the
+// background.
+//
+// Required Lifecycle Management Rule for automatic deletion:
+// 1. Delete object	0+ days since object's custom time
+// 2. Name matches suffix '.cachestore'
 func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[V], error) {
 	for _, opt := range opts {
 		opt.Apply(&cfg.StoreOptions)
@@ -74,7 +92,7 @@ func New[V any](cfg *Config, opts ...cachestore.StoreOptions) (cachestore.Store[
 }
 
 func (g *GCStorage[V]) Exists(ctx context.Context, key string) (bool, error) {
-	attr, err := g.bucketHandle.Object(g.keyPrefix + key).Attrs(ctx)
+	attr, err := g.bucketHandle.Object(g.objectKey(key)).Attrs(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			return false, nil
@@ -82,14 +100,8 @@ func (g *GCStorage[V]) Exists(ctx context.Context, key string) (bool, error) {
 		return false, fmt.Errorf("cachestore/gcstorage: get attrs returned error: %w", err)
 	}
 
-	if attr.Metadata["expires_at"] != "" {
-		expiresAt, err := time.Parse(time.RFC3339, attr.Metadata["expires_at"])
-		if err != nil {
-			return false, fmt.Errorf("cachestore/gcstorage: time parse returned error: %w", err)
-		}
-		if !expiresAt.IsZero() && expiresAt.Before(time.Now()) {
-			return false, nil
-		}
+	if !attr.CustomTime.IsZero() && attr.CustomTime.Before(time.Now()) {
+		return false, nil
 	}
 	return true, nil
 }
@@ -119,12 +131,11 @@ func (g *GCStorage[V]) SetEx(ctx context.Context, key string, value V, ttl time.
 		return err
 	}
 
-	obj := g.bucketHandle.Object(g.keyPrefix + key)
+	obj := g.bucketHandle.Object(g.objectKey(key))
 	w := obj.NewWriter(ctx)
 	w.ObjectAttrs.ContentType = "application/json"
-	w.ObjectAttrs.Metadata = map[string]string{
-		"expires_at": expiresAt.Format(time.RFC3339),
-	}
+	w.ObjectAttrs.CustomTime = expiresAt
+
 	if _, err := w.Write(data); err != nil {
 		_ = w.Close()
 		return fmt.Errorf("cachestore/gcstorage: write returned error: %w", err)
@@ -141,7 +152,7 @@ func (g *GCStorage[V]) Get(ctx context.Context, key string) (V, bool, error) {
 }
 
 func (g *GCStorage[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
-	obj := g.bucketHandle.Object(g.keyPrefix + key)
+	obj := g.bucketHandle.Object(g.objectKey(key))
 	r, err := obj.NewReader(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
@@ -199,7 +210,7 @@ func (g *GCStorage[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool
 }
 
 func (g *GCStorage[V]) Delete(ctx context.Context, key string) error {
-	return g.bucketHandle.Object(g.keyPrefix + key).Delete(ctx)
+	return g.bucketHandle.Object(g.objectKey(key)).Delete(ctx)
 }
 
 func (g *GCStorage[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
@@ -221,6 +232,10 @@ func (g *GCStorage[V]) DeletePrefix(ctx context.Context, keyPrefix string) error
 				break
 			}
 			return fmt.Errorf("cachestore/gcstorage: it next error: %w", err)
+		}
+
+		if !strings.HasSuffix(objAttrs.Name, keySuffix) {
+			continue
 		}
 
 		if err = g.bucketHandle.Object(objAttrs.Name).Delete(ctx); err != nil {
@@ -245,6 +260,10 @@ func (g *GCStorage[V]) ClearAll(ctx context.Context) error {
 			return fmt.Errorf("cachestore/gcstorage: it next error: %w", err)
 		}
 
+		if !strings.HasSuffix(objAttrs.Name, keySuffix) {
+			continue
+		}
+
 		if err = g.bucketHandle.Object(objAttrs.Name).Delete(ctx); err != nil {
 			return fmt.Errorf("cachestore/gcstorage: object delete error: %w", err)
 		}
@@ -258,6 +277,53 @@ func (g *GCStorage[V]) GetOrSetWithLock(ctx context.Context, key string, getter 
 
 func (g *GCStorage[V]) GetOrSetWithLockEx(ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration) (V, error) {
 	return *new(V), cachestore.ErrNotSupported
+}
+
+func (g *GCStorage[V]) CleanExpiredEvery(ctx context.Context, d time.Duration, onError func(err error)) {
+	ticker := time.NewTicker(d)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			objIt := g.bucketHandle.Objects(ctx, &storage.Query{
+				Prefix: g.keyPrefix,
+			})
+
+			for {
+				objAttrs, err := objIt.Next()
+				if err != nil {
+					if errors.Is(err, iterator.Done) {
+						break
+					}
+					return
+				}
+
+				if !strings.HasSuffix(objAttrs.Name, keySuffix) {
+					continue
+				}
+
+				if objAttrs.CustomTime.IsZero() {
+					continue
+				}
+
+				if objAttrs.CustomTime.Before(time.Now()) {
+					if err = g.bucketHandle.Object(objAttrs.Name).Delete(ctx); err != nil {
+						if onError != nil {
+							onError(fmt.Errorf("cachestore/gcstorage: delete error: %w", err))
+						}
+						continue
+					}
+				}
+			}
+		}
+	}
+}
+
+func (g *GCStorage[V]) objectKey(key string) string {
+	return fmt.Sprintf("%s%s%s", g.keyPrefix, key, keySuffix)
 }
 
 func serialize[V any](value V) ([]byte, error) {
