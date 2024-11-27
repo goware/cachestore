@@ -103,7 +103,7 @@ func newRedisClient(cfg *Config, address string) *redis.Client {
 	return redis.NewClient(&redis.Options{
 		Addr:         address,
 		DB:           cfg.DBIndex,
-		MinIdleConns: maxIdle,
+		MaxIdleConns: maxIdle,
 		PoolSize:     maxActive,
 	})
 }
