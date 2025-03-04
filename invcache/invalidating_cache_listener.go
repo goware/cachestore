@@ -2,7 +2,6 @@ package invcache
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/goware/pubsub"
 )
@@ -21,26 +20,28 @@ func NewCacheInvalidator[V any](store InvalidatingCache[V], ps pubsub.PubSub[Cac
 	}
 }
 
-func (ci *CacheInvalidator[V]) Listen(ctx context.Context) {
+func (ci *CacheInvalidator[V]) Listen(ctx context.Context) error {
 	sub, err := ci.pubsub.Subscribe(ctx, ChannelID)
 	if err != nil {
-		fmt.Println("Error subscribing to cache invalidation channel:", err)
-		return
+		return err
 	}
 	defer sub.Unsubscribe()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case msg := <-sub.ReadMessage():
+			return nil
+		case msg, ok := <-sub.ReadMessage():
+			if !ok {
+				return nil
+			}
+
 			// Skip if message.Origin == local instance ID
 			if msg.Origin == ci.instanceID {
 				continue
 			}
 
 			ci.store.delete(ctx, msg.Key)
-			fmt.Println("Cache invalidated for key:", msg.Key)
 		}
 	}
 }

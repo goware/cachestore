@@ -38,7 +38,8 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ci.Listen(ctx)
+		err := ci.Listen(ctx)
+		require.NoError(t, err)
 	}()
 
 	require.NoError(t, ic.Set(ctx, "foo", "bar"))

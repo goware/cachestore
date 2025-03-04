@@ -15,12 +15,12 @@ import (
 )
 
 const (
-	N = 20
+	N = 5
 )
 
 func TestInvalidatingCache_Set_Success(t *testing.T) {
 	ctx := context.Background()
-	store, err := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 
 	publishCalled := false
@@ -28,28 +28,28 @@ func TestInvalidatingCache_Set_Success(t *testing.T) {
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
 			publishCalled = true
 			require.Equal(t, invcache.ChannelID, channelID)
-			require.Equal(t, "test-key", msg.Key)
-			require.Equal(t, "test-instance", msg.Origin)
+			require.Equal(t, "key", msg.Key)
+			require.Equal(t, "local-instance", msg.Origin)
 			return nil
 		},
 	}
 
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	err = ic.Set(ctx, "test-key", "test-value")
+	err = ic.Set(ctx, "key", "val")
 	require.NoError(t, err)
 
-	val, ok, err := store.Get(ctx, "test-key")
+	val, ok, err := store.Get(ctx, "key")
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, "test-value", val)
+	require.Equal(t, "val", val)
 	require.True(t, publishCalled)
 }
 
 func TestInvalidatingCache_Set_PublishError(t *testing.T) {
 	ctx := context.Background()
 
-	store, err := memlru.NewWithSize[string](10, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 
 	publishErr := errors.New("publish failed: Set")
@@ -59,47 +59,47 @@ func TestInvalidatingCache_Set_PublishError(t *testing.T) {
 		},
 	}
 
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	err = ic.Set(ctx, "myKey", "myVal")
+	err = ic.Set(ctx, "key", "val")
 	require.ErrorIs(t, err, publishErr)
 
-	val, ok, err := store.Get(ctx, "myKey")
+	val, ok, err := store.Get(ctx, "key")
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, "myVal", val)
+	require.Equal(t, "val", val)
 }
 
 func TestInvalidatingCache_SetEx_Success(t *testing.T) {
 	ctx := context.Background()
-	store, err := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 
 	published := false
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
 			published = true
-			require.Equal(t, "exKey", msg.Key)
-			require.Equal(t, "test-instance", msg.Origin)
+			require.Equal(t, "key", msg.Key)
+			require.Equal(t, "local-instance", msg.Origin)
 			return nil
 		},
 	}
 
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	err = ic.SetEx(ctx, "exKey", "exVal", 5*time.Second)
+	err = ic.SetEx(ctx, "key", "val", 5*time.Second)
 	require.NoError(t, err)
 
-	val, ok, err := store.Get(ctx, "exKey")
+	val, ok, err := store.Get(ctx, "key")
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, "exVal", val)
+	require.Equal(t, "val", val)
 	require.True(t, published)
 }
 
 func TestInvalidatingCache_SetEx_PublishError(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, _ := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 
 	publishErr := errors.New("publish failed: SetEx")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
@@ -107,20 +107,20 @@ func TestInvalidatingCache_SetEx_PublishError(t *testing.T) {
 			return publishErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache[string](store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	err := ic.SetEx(ctx, "exKey", "exVal", 5*time.Second)
+	err := ic.SetEx(ctx, "key", "val", 5*time.Second)
 	require.ErrorIs(t, err, publishErr)
 
-	v, ok, getErr := store.Get(ctx, "exKey")
+	v, ok, getErr := store.Get(ctx, "key")
 	require.NoError(t, getErr)
 	require.True(t, ok)
-	require.Equal(t, "exVal", v)
+	require.Equal(t, "val", v)
 }
 
 func TestInvalidatingCache_BatchSet_Success(t *testing.T) {
 	ctx := context.Background()
-	store, err := memlru.NewWithSize[string](10, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 
 	var publishedKeys []string
@@ -130,10 +130,10 @@ func TestInvalidatingCache_BatchSet_Success(t *testing.T) {
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	keys := []string{"k1", "k2"}
-	vals := []string{"v1", "v2"}
+	keys := []string{"key1", "key2"}
+	vals := []string{"val1", "val2"}
 	err = ic.BatchSet(ctx, keys, vals)
 	require.NoError(t, err)
 
@@ -144,29 +144,30 @@ func TestInvalidatingCache_BatchSet_Success(t *testing.T) {
 		require.Equal(t, vals[i], got)
 	}
 
-	require.ElementsMatch(t, []string{"k1", "k2"}, publishedKeys)
+	require.ElementsMatch(t, []string{"key1", "key2"}, publishedKeys)
 }
 
 func TestInvalidatingCache_BatchSet_PublishError(t *testing.T) {
 	ctx := context.Background()
-	store, err := memlru.NewWithSize[string](10, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 
+	publishErr := errors.New("publish fail: BatchSetEx for key2")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			if msg.Key == "k2" {
-				return errors.New("publish error for k2")
+			if msg.Key == "key2" {
+				return publishErr
 			}
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache[string](store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	keys := []string{"k1", "k2"}
-	vals := []string{"v1", "v2"}
+	keys := []string{"key1", "key2"}
+	vals := []string{"val1", "val2"}
 	err = ic.BatchSet(ctx, keys, vals)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "publish error for k2")
+	require.ErrorIs(t, err, publishErr)
 
 	for i, k := range keys {
 		got, ok, errGet := store.Get(ctx, k)
@@ -178,7 +179,8 @@ func TestInvalidatingCache_BatchSet_PublishError(t *testing.T) {
 
 func TestInvalidatingCache_BatchSetEx_Success(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](10, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
 	var published []string
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
@@ -187,42 +189,44 @@ func TestInvalidatingCache_BatchSetEx_Success(t *testing.T) {
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	keys := []string{"bx1", "bx2"}
-	vals := []string{"vx1", "vx2"}
-	err := ic.BatchSetEx(ctx, keys, vals, 2*time.Second)
+	keys := []string{"key1", "key2"}
+	vals := []string{"val1", "val2"}
+	err = ic.BatchSetEx(ctx, keys, vals, 2*time.Second)
 	require.NoError(t, err)
 
 	for i, k := range keys {
-		got, ok, errGet := store.Get(ctx, k)
-		require.NoError(t, errGet)
+		got, ok, err := store.Get(ctx, k)
+		require.NoError(t, err)
 		require.True(t, ok)
 		require.Equal(t, vals[i], got)
 	}
-	require.ElementsMatch(t, []string{"bx1", "bx2"}, published)
+	require.ElementsMatch(t, []string{"key1", "key2"}, published)
 }
 
 func TestInvalidatingCache_BatchSetEx_PublishError(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](10, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
-	publishErr := errors.New("publish fail: batchSetEx")
+	publishErr := errors.New("publish fail: BatchSetEx")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
 			return publishErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	keys := []string{"bx1", "bx2"}
-	vals := []string{"vx1", "vx2"}
-	err := ic.BatchSetEx(ctx, keys, vals, 2*time.Second)
+	keys := []string{"key1", "key2"}
+	vals := []string{"val1", "val2"}
+	err = ic.BatchSetEx(ctx, keys, vals, 2*time.Second)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "publish fail: batchSetEx")
+	require.ErrorIs(t, err, publishErr)
 
 	for i, k := range keys {
-		v, ok, _ := store.Get(ctx, k)
+		v, ok, err := store.Get(ctx, k)
+		require.NoError(t, err)
 		require.True(t, ok)
 		require.Equal(t, vals[i], v)
 	}
@@ -230,71 +234,82 @@ func TestInvalidatingCache_BatchSetEx_PublishError(t *testing.T) {
 
 func TestInvalidatingCache_Delete_Success(t *testing.T) {
 	ctx := context.Background()
-	store, err := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 
-	_ = store.Set(ctx, "delKey", "delVal")
+	err = store.Set(ctx, "key", "val")
+	require.NoError(t, err)
 
 	published := false
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
 			published = true
-			require.Equal(t, "delKey", msg.Key)
-			require.Equal(t, "test-instance", msg.Origin)
+			require.Equal(t, "key", msg.Key)
+			require.Equal(t, "local-instance", msg.Origin)
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	err = ic.Delete(ctx, "delKey")
+	err = ic.Delete(ctx, "key")
 	require.NoError(t, err)
 	require.True(t, published)
 
-	_, ok, _ := store.Get(ctx, "delKey")
+	val, ok, err := store.Get(ctx, "val")
+	require.NoError(t, err)
 	require.False(t, ok)
+	require.Equal(t, "", val)
 }
 
 func TestInvalidatingCache_Delete_PublishError(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
-	_ = store.Set(ctx, "delKey", "delVal")
+	err = store.Set(ctx, "key", "val")
+	require.NoError(t, err)
 
-	pubErr := errors.New("delete publish error")
+	pubErr := errors.New("publish fail: Delete")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
 			return pubErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	err := ic.Delete(ctx, "delKey")
+	err = ic.Delete(ctx, "key")
 	require.ErrorIs(t, err, pubErr)
 
-	_, ok, _ := store.Get(ctx, "delKey")
+	val, ok, err := store.Get(ctx, "key")
+	require.NoError(t, err)
 	require.False(t, ok)
+	require.Equal(t, "", val)
 }
 
 func TestInvalidatingCache_DeletePrefix_Success(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
-	_ = store.Set(ctx, "abc1", "val1")
-	_ = store.Set(ctx, "abc2", "val2")
-	_ = store.Set(ctx, "xyz", "val3")
+	err = store.Set(ctx, "abc1", "val1")
+	require.NoError(t, err)
+	err = store.Set(ctx, "abc2", "val2")
+	require.NoError(t, err)
+	err = store.Set(ctx, "xyz3", "val3")
+	require.NoError(t, err)
 
 	published := false
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
 			published = true
 			require.Equal(t, "abc", msg.Key)
-			require.Equal(t, "test-instance", msg.Origin)
+			require.Equal(t, "local-instance", msg.Origin)
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	err := ic.DeletePrefix(ctx, "abc")
+	err = ic.DeletePrefix(ctx, "abc")
 	require.NoError(t, err)
 	require.True(t, published)
 
@@ -302,7 +317,7 @@ func TestInvalidatingCache_DeletePrefix_Success(t *testing.T) {
 	require.NoError(t, err)
 	_, ok2, err := store.Get(ctx, "abc2")
 	require.NoError(t, err)
-	_, ok3, err := store.Get(ctx, "xyz")
+	_, ok3, err := store.Get(ctx, "xyz3")
 	require.NoError(t, err)
 	require.False(t, ok1)
 	require.False(t, ok2)
@@ -311,77 +326,89 @@ func TestInvalidatingCache_DeletePrefix_Success(t *testing.T) {
 
 func TestInvalidatingCache_DeletePrefix_PublishError(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
-	_ = store.Set(ctx, "abc1", "val1")
+	err = store.Set(ctx, "abc1", "val1")
+	require.NoError(t, err)
 
-	pubErr := errors.New("deletePrefix publish fail")
+	pubErr := errors.New("publish fail: DeletePrefix")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, ch string, msg invcache.CacheInvalidationMessage) error {
 			return pubErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	err := ic.DeletePrefix(ctx, "abc")
+	err = ic.DeletePrefix(ctx, "abc")
 	require.ErrorIs(t, err, pubErr)
 
-	_, ok1, _ := store.Get(ctx, "abc1")
+	_, ok1, err := store.Get(ctx, "abc1")
+	require.NoError(t, err)
 	require.False(t, ok1)
 }
 
 func TestInvalidatingCache_ClearAll_Success(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
-	_ = store.Set(ctx, "key1", "val1")
-	_ = store.Set(ctx, "key2", "val2")
+	err = store.Set(ctx, "key1", "val1")
+	require.NoError(t, err)
+	err = store.Set(ctx, "key2", "val2")
+	require.NoError(t, err)
 
 	published := false
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
 			published = true
 			require.Equal(t, "*", msg.Key)
-			require.Equal(t, "test-instance", msg.Origin)
+			require.Equal(t, "local-instance", msg.Origin)
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache[string](store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	err := ic.ClearAll(ctx)
+	err = ic.ClearAll(ctx)
 	require.NoError(t, err)
 	require.True(t, published)
 
-	exists1, _ := store.Exists(ctx, "key1")
-	exists2, _ := store.Exists(ctx, "key2")
+	exists1, err := store.Exists(ctx, "key1")
+	require.NoError(t, err)
+	exists2, err := store.Exists(ctx, "key2")
+	require.NoError(t, err)
 	require.False(t, exists1)
 	require.False(t, exists2)
 }
 
 func TestInvalidatingCache_ClearAll_PublishError(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
-	_ = store.Set(ctx, "c1", "v1")
+	err = store.Set(ctx, "key", "val")
+	require.NoError(t, err)
 
-	pubErr := errors.New("clearAll publish fail")
+	pubErr := errors.New("publish fail: ClearAll")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, ch string, msg invcache.CacheInvalidationMessage) error {
 			return pubErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	err := ic.ClearAll(ctx)
+	err = ic.ClearAll(ctx)
 	require.ErrorIs(t, err, pubErr)
 
-	exists, _ := store.Exists(ctx, "c1")
+	exists, err := store.Exists(ctx, "key")
+	require.NoError(t, err)
 	require.False(t, exists)
 }
 
 func TestInvalidatingCache_GetOrSetWithLock_Success(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
 	published := false
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
@@ -391,7 +418,7 @@ func TestInvalidatingCache_GetOrSetWithLock_Success(t *testing.T) {
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache[string](store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
 	val, err := ic.GetOrSetWithLock(ctx, "lockedKey", func(ctx context.Context, key string) (string, error) {
 		return "valFromGetter", nil
@@ -400,14 +427,16 @@ func TestInvalidatingCache_GetOrSetWithLock_Success(t *testing.T) {
 	require.Equal(t, "valFromGetter", val)
 	require.True(t, published)
 
-	got, ok, _ := store.Get(ctx, "lockedKey")
+	got, ok, err := store.Get(ctx, "lockedKey")
+	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "valFromGetter", got)
 }
 
 func TestInvalidatingCache_GetOrSetWithLock_Error(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
@@ -415,10 +444,10 @@ func TestInvalidatingCache_GetOrSetWithLock_Error(t *testing.T) {
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
 	getterErr := errors.New("getter failed")
-	_, err := ic.GetOrSetWithLock(ctx, "failKey", func(ctx context.Context, key string) (string, error) {
+	_, err = ic.GetOrSetWithLock(ctx, "key", func(ctx context.Context, key string) (string, error) {
 		return "", getterErr
 	})
 	require.ErrorIs(t, err, getterErr)
@@ -426,15 +455,16 @@ func TestInvalidatingCache_GetOrSetWithLock_Error(t *testing.T) {
 
 func TestInvalidatingCache_GetOrSetWithLock_PublishError(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
-	pubErr := errors.New("publish fail: lock")
+	pubErr := errors.New("publish fail: GetOrSetWithLock")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, ch string, msg invcache.CacheInvalidationMessage) error {
 			return pubErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
 	val, err := ic.GetOrSetWithLock(ctx, "lockKey", func(ctx context.Context, key string) (string, error) {
 		return "valFromGetter", nil
@@ -442,25 +472,26 @@ func TestInvalidatingCache_GetOrSetWithLock_PublishError(t *testing.T) {
 	require.ErrorIs(t, err, pubErr)
 	require.Equal(t, "valFromGetter", val)
 
-	storedVal, ok, _ := store.Get(ctx, "lockKey")
+	storedVal, ok, err := store.Get(ctx, "lockKey")
+	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "valFromGetter", storedVal)
 }
 
 func TestInvalidatingCache_GetOrSetWithLockEx_Success(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, _ := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 
 	published := false
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
 			published = true
 			require.Equal(t, "lockExKey", msg.Key)
-			require.Equal(t, "test-instance", msg.Origin)
+			require.Equal(t, "local-instance", msg.Origin)
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
 	val, err := ic.GetOrSetWithLockEx(ctx, "lockExKey", func(ctx context.Context, key string) (string, error) {
 		return "valExFromGetter", nil
@@ -469,14 +500,16 @@ func TestInvalidatingCache_GetOrSetWithLockEx_Success(t *testing.T) {
 	require.Equal(t, "valExFromGetter", val)
 	require.True(t, published)
 
-	got, ok, _ := store.Get(ctx, "lockExKey")
+	got, ok, err := store.Get(ctx, "lockExKey")
+	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "valExFromGetter", got)
 }
 
 func TestInvalidatingCache_GetOrSetWithLockEx_Error(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
@@ -484,10 +517,10 @@ func TestInvalidatingCache_GetOrSetWithLockEx_Error(t *testing.T) {
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
-	getterErr := errors.New("lockEx getter fail")
-	_, err := ic.GetOrSetWithLockEx(ctx, "lockExKeyErr", func(ctx context.Context, key string) (string, error) {
+	getterErr := errors.New("getter failed")
+	_, err = ic.GetOrSetWithLockEx(ctx, "lockExKeyErr", func(ctx context.Context, key string) (string, error) {
 		return "", getterErr
 	}, 2*time.Second)
 	require.ErrorIs(t, err, getterErr)
@@ -495,15 +528,16 @@ func TestInvalidatingCache_GetOrSetWithLockEx_Error(t *testing.T) {
 
 func TestInvalidatingCache_GetOrSetWithLockEx_PublishError(t *testing.T) {
 	ctx := context.Background()
-	store, _ := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
+	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
+	require.NoError(t, err)
 
-	pubErr := errors.New("publish fail: lockEx")
+	pubErr := errors.New("publish fail: GetOrSetWithLockEx")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, ch string, msg invcache.CacheInvalidationMessage) error {
 			return pubErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "test-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
 	val, err := ic.GetOrSetWithLockEx(ctx, "lockExKey", func(ctx context.Context, key string) (string, error) {
 		return "valExFromGetter", nil
@@ -511,7 +545,8 @@ func TestInvalidatingCache_GetOrSetWithLockEx_PublishError(t *testing.T) {
 	require.ErrorIs(t, err, pubErr)
 	require.Equal(t, "valExFromGetter", val)
 
-	got, ok, _ := store.Get(ctx, "lockExKey")
+	got, ok, err := store.Get(ctx, "lockExKey")
+	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "valExFromGetter", got)
 }
