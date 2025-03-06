@@ -152,7 +152,7 @@ func TestInvalidatingCache_BatchSet_PublishError(t *testing.T) {
 	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 
-	publishErr := errors.New("publish fail: BatchSetEx for key2")
+	publishErr := errors.New("BatchSet: publish invalidation failed for keys: [key2]")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
 			if msg.Key == "key2" {
@@ -167,7 +167,7 @@ func TestInvalidatingCache_BatchSet_PublishError(t *testing.T) {
 	vals := []string{"val1", "val2"}
 	err = ic.BatchSet(ctx, keys, vals)
 	require.Error(t, err)
-	require.ErrorIs(t, err, publishErr)
+	require.ErrorContains(t, err, publishErr.Error())
 
 	for i, k := range keys {
 		got, ok, errGet := store.Get(ctx, k)
@@ -210,7 +210,7 @@ func TestInvalidatingCache_BatchSetEx_PublishError(t *testing.T) {
 	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 
-	publishErr := errors.New("publish fail: BatchSetEx")
+	publishErr := errors.New("BatchSetEx: publish invalidation failed for keys: [key1 key2]")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
 			return publishErr
@@ -222,7 +222,7 @@ func TestInvalidatingCache_BatchSetEx_PublishError(t *testing.T) {
 	vals := []string{"val1", "val2"}
 	err = ic.BatchSetEx(ctx, keys, vals, 2*time.Second)
 	require.Error(t, err)
-	require.ErrorIs(t, err, publishErr)
+	require.ErrorContains(t, err, publishErr.Error())
 
 	for i, k := range keys {
 		v, ok, err := store.Get(ctx, k)

@@ -137,7 +137,7 @@ func (ic *InvalidatingCache[V]) GetOrSetWithLock(ctx context.Context, key string
 		return zero, err
 	}
 	if err := ic.publishInvalidation(ctx, key); err != nil {
-		return zero, err
+		return value, err
 	}
 	return value, nil
 }
@@ -150,7 +150,7 @@ func (ic *InvalidatingCache[V]) GetOrSetWithLockEx(ctx context.Context, key stri
 		return zero, err
 	}
 	if err := ic.publishInvalidation(ctx, key); err != nil {
-		return zero, err
+		return value, err
 	}
 	return value, nil
 }
