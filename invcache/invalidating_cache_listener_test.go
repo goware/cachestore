@@ -12,6 +12,7 @@ import (
 	"github.com/goware/cachestore"
 	"github.com/goware/cachestore/invcache"
 	"github.com/goware/cachestore/memlru"
+	"github.com/goware/logger"
 	"github.com/goware/pubsub"
 )
 
@@ -32,7 +33,7 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 	store, err := memlru.NewWithSize[string](5, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 	ic := invcache.NewInvalidatingCache(store, mps, "local-instance")
-	ci := invcache.NewCacheInvalidator(*ic, mps, "local-instance")
+	ci := invcache.NewCacheInvalidator(&logger.StdLogAdapter{}, *ic, mps, "local-instance")
 
 	var wg sync.WaitGroup
 	wg.Add(1)

@@ -3,17 +3,20 @@ package invcache
 import (
 	"context"
 
+	"github.com/goware/logger"
 	"github.com/goware/pubsub"
 )
 
 type CacheInvalidator[V any] struct {
+	log        logger.Logger
 	store      InvalidatingCache[V]
 	pubsub     pubsub.PubSub[CacheInvalidationMessage]
 	instanceID string
 }
 
-func NewCacheInvalidator[V any](store InvalidatingCache[V], ps pubsub.PubSub[CacheInvalidationMessage], instanceID string) *CacheInvalidator[V] {
+func NewCacheInvalidator[V any](log logger.Logger, store InvalidatingCache[V], ps pubsub.PubSub[CacheInvalidationMessage], instanceID string) *CacheInvalidator[V] {
 	return &CacheInvalidator[V]{
+		log:        log,
 		store:      store,
 		pubsub:     ps,
 		instanceID: instanceID,
@@ -41,7 +44,9 @@ func (ci *CacheInvalidator[V]) Listen(ctx context.Context) error {
 				continue
 			}
 
-			ci.store.delete(ctx, msg.Key)
+			if err := ci.store.delete(ctx, msg.Key); err != nil {
+				ci.log.Errorf("failed to delete cache entry for key %s: %w", msg.Key, err)
+			}
 		}
 	}
 }

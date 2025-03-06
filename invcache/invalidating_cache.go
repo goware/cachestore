@@ -2,7 +2,7 @@ package invcache
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"time"
 
 	"github.com/goware/cachestore"
@@ -67,14 +67,16 @@ func (ic *InvalidatingCache[V]) BatchSet(ctx context.Context, keys []string, val
 		return err
 	}
 
-	var joinedErr error
+	var failedKeys []string
 	for _, k := range keys {
 		if err := ic.publishInvalidation(ctx, k); err != nil {
-			joinedErr = errors.Join(joinedErr, err)
+			failedKeys = append(failedKeys, k)
 		}
 	}
-
-	return joinedErr
+	if len(failedKeys) > 0 {
+		return fmt.Errorf("BatchSet: publish invalidation failed for keys: %v", failedKeys)
+	}
+	return nil
 }
 
 func (ic *InvalidatingCache[V]) BatchSetEx(
@@ -87,19 +89,22 @@ func (ic *InvalidatingCache[V]) BatchSetEx(
 		return err
 	}
 
-	var joinedErr error
+	var failedKeys []string
 	for _, k := range keys {
 		if err := ic.publishInvalidation(ctx, k); err != nil {
-			joinedErr = errors.Join(joinedErr, err)
+			failedKeys = append(failedKeys, k)
 		}
 	}
-
-	return joinedErr
+	if len(failedKeys) > 0 {
+		return fmt.Errorf("BatchSetEx: publish invalidation failed for keys: %v", failedKeys)
+	}
+	return nil
 }
 
 func (ic *InvalidatingCache[V]) Delete(ctx context.Context, key string) error {
-	ic.delete(ctx, key)
-
+	if err := ic.delete(ctx, key); err != nil {
+		return err
+	}
 	return ic.publishInvalidation(ctx, key)
 }
 
@@ -125,19 +130,29 @@ func (ic *InvalidatingCache[V]) ClearAll(ctx context.Context) error {
 }
 
 func (ic *InvalidatingCache[V]) GetOrSetWithLock(ctx context.Context, key string, getter func(context.Context, string) (V, error)) (V, error) {
+	var zero V
+
 	value, err := ic.store.GetOrSetWithLock(ctx, key, getter)
-	if err == nil {
-		ic.publishInvalidation(ctx, key)
+	if err != nil {
+		return zero, err
 	}
-	return value, err
+	if err := ic.publishInvalidation(ctx, key); err != nil {
+		return zero, err
+	}
+	return value, nil
 }
 
 func (ic *InvalidatingCache[V]) GetOrSetWithLockEx(ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration) (V, error) {
+	var zero V
+
 	value, err := ic.store.GetOrSetWithLockEx(ctx, key, getter, ttl)
-	if err == nil {
-		return value, ic.publishInvalidation(ctx, key)
+	if err != nil {
+		return zero, err
 	}
-	return value, err
+	if err := ic.publishInvalidation(ctx, key); err != nil {
+		return zero, err
+	}
+	return value, nil
 }
 
 // Publish invalidation event
