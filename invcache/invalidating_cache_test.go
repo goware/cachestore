@@ -24,17 +24,16 @@ func TestInvalidatingCache_Set_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	publishCalled := false
-	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
-		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			publishCalled = true
-			require.Equal(t, invcache.ChannelID, channelID)
-			require.Equal(t, "key", msg.Key)
-			require.Equal(t, "local-instance", msg.Origin)
-			return nil
-		},
-	}
+	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{}
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
+		publishCalled = true
+		require.Equal(t, invcache.DefaultChannelID, channelID)
+		require.Equal(t, "key", msg.Keys[0])
+		require.Equal(t, ic.GetInstanceID(), msg.Origin)
+		return nil
+	}
 
 	err = ic.Set(ctx, "key", "val")
 	require.NoError(t, err)
@@ -58,8 +57,7 @@ func TestInvalidatingCache_Set_PublishError(t *testing.T) {
 			return publishErr
 		},
 	}
-
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	err = ic.Set(ctx, "key", "val")
 	require.ErrorIs(t, err, publishErr)
@@ -76,16 +74,15 @@ func TestInvalidatingCache_SetEx_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	published := false
-	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
-		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			published = true
-			require.Equal(t, "key", msg.Key)
-			require.Equal(t, "local-instance", msg.Origin)
-			return nil
-		},
-	}
+	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{}
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
+		published = true
+		require.Equal(t, "key", msg.Keys[0])
+		require.Equal(t, ic.GetInstanceID(), msg.Origin)
+		return nil
+	}
 
 	err = ic.SetEx(ctx, "key", "val", 5*time.Second)
 	require.NoError(t, err)
@@ -107,7 +104,7 @@ func TestInvalidatingCache_SetEx_PublishError(t *testing.T) {
 			return publishErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	err := ic.SetEx(ctx, "key", "val", 5*time.Second)
 	require.ErrorIs(t, err, publishErr)
@@ -126,11 +123,11 @@ func TestInvalidatingCache_BatchSet_Success(t *testing.T) {
 	var publishedKeys []string
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			publishedKeys = append(publishedKeys, msg.Key)
+			publishedKeys = append(publishedKeys, msg.Keys...)
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	keys := []string{"key1", "key2"}
 	vals := []string{"val1", "val2"}
@@ -155,13 +152,13 @@ func TestInvalidatingCache_BatchSet_PublishError(t *testing.T) {
 	publishErr := errors.New("BatchSet: publish invalidation failed for keys: [key2]")
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			if msg.Key == "key2" {
+			if msg.Keys[1] == "key2" {
 				return publishErr
 			}
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	keys := []string{"key1", "key2"}
 	vals := []string{"val1", "val2"}
@@ -185,11 +182,11 @@ func TestInvalidatingCache_BatchSetEx_Success(t *testing.T) {
 	var published []string
 	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			published = append(published, msg.Key)
+			published = append(published, msg.Keys...)
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	keys := []string{"key1", "key2"}
 	vals := []string{"val1", "val2"}
@@ -216,7 +213,7 @@ func TestInvalidatingCache_BatchSetEx_PublishError(t *testing.T) {
 			return publishErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	keys := []string{"key1", "key2"}
 	vals := []string{"val1", "val2"}
@@ -241,15 +238,15 @@ func TestInvalidatingCache_Delete_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	published := false
-	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
-		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			published = true
-			require.Equal(t, "key", msg.Key)
-			require.Equal(t, "local-instance", msg.Origin)
-			return nil
-		},
+	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{}
+	ic := invcache.NewInvalidatingCache(store, mockPS)
+
+	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
+		published = true
+		require.Equal(t, "key", msg.Keys[0])
+		require.Equal(t, ic.GetInstanceID(), msg.Origin)
+		return nil
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
 	err = ic.Delete(ctx, "key")
 	require.NoError(t, err)
@@ -275,7 +272,7 @@ func TestInvalidatingCache_Delete_PublishError(t *testing.T) {
 			return pubErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	err = ic.Delete(ctx, "key")
 	require.ErrorIs(t, err, pubErr)
@@ -299,15 +296,15 @@ func TestInvalidatingCache_DeletePrefix_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	published := false
-	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
-		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			published = true
-			require.Equal(t, "abc", msg.Key)
-			require.Equal(t, "local-instance", msg.Origin)
-			return nil
-		},
+	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{}
+	ic := invcache.NewInvalidatingCache(store, mockPS)
+
+	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
+		published = true
+		require.Equal(t, "abc*", msg.Keys[0])
+		require.Equal(t, ic.GetInstanceID(), msg.Origin)
+		return nil
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
 	err = ic.DeletePrefix(ctx, "abc")
 	require.NoError(t, err)
@@ -338,7 +335,7 @@ func TestInvalidatingCache_DeletePrefix_PublishError(t *testing.T) {
 			return pubErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	err = ic.DeletePrefix(ctx, "abc")
 	require.ErrorIs(t, err, pubErr)
@@ -359,15 +356,15 @@ func TestInvalidatingCache_ClearAll_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	published := false
-	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
-		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			published = true
-			require.Equal(t, "*", msg.Key)
-			require.Equal(t, "local-instance", msg.Origin)
-			return nil
-		},
+	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{}
+	ic := invcache.NewInvalidatingCache(store, mockPS)
+
+	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
+		published = true
+		require.Equal(t, "*", msg.Keys[0])
+		require.Equal(t, ic.GetInstanceID(), msg.Origin)
+		return nil
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
 	err = ic.ClearAll(ctx)
 	require.NoError(t, err)
@@ -395,7 +392,7 @@ func TestInvalidatingCache_ClearAll_PublishError(t *testing.T) {
 			return pubErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	err = ic.ClearAll(ctx)
 	require.ErrorIs(t, err, pubErr)
@@ -411,14 +408,15 @@ func TestInvalidatingCache_GetOrSetWithLock_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	published := false
-	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
-		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			published = true
-			require.Equal(t, "lockedKey", msg.Key)
-			return nil
-		},
+	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{}
+	ic := invcache.NewInvalidatingCache(store, mockPS)
+
+	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
+		published = true
+		require.Equal(t, "lockedKey", msg.Keys[0])
+		require.Equal(t, ic.GetInstanceID(), msg.Origin)
+		return nil
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
 	val, err := ic.GetOrSetWithLock(ctx, "lockedKey", func(ctx context.Context, key string) (string, error) {
 		return "valFromGetter", nil
@@ -444,7 +442,7 @@ func TestInvalidatingCache_GetOrSetWithLock_Error(t *testing.T) {
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	getterErr := errors.New("getter failed")
 	_, err = ic.GetOrSetWithLock(ctx, "key", func(ctx context.Context, key string) (string, error) {
@@ -464,7 +462,7 @@ func TestInvalidatingCache_GetOrSetWithLock_PublishError(t *testing.T) {
 			return pubErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	val, err := ic.GetOrSetWithLock(ctx, "lockKey", func(ctx context.Context, key string) (string, error) {
 		return "valFromGetter", nil
@@ -483,15 +481,15 @@ func TestInvalidatingCache_GetOrSetWithLockEx_Success(t *testing.T) {
 	store, _ := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 
 	published := false
-	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{
-		publishFunc: func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
-			published = true
-			require.Equal(t, "lockExKey", msg.Key)
-			require.Equal(t, "local-instance", msg.Origin)
-			return nil
-		},
+	mockPS := &mockPubSub[invcache.CacheInvalidationMessage]{}
+	ic := invcache.NewInvalidatingCache(store, mockPS)
+
+	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invcache.CacheInvalidationMessage) error {
+		published = true
+		require.Equal(t, "lockExKey", msg.Keys[0])
+		require.Equal(t, ic.GetInstanceID(), msg.Origin)
+		return nil
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
 
 	val, err := ic.GetOrSetWithLockEx(ctx, "lockExKey", func(ctx context.Context, key string) (string, error) {
 		return "valExFromGetter", nil
@@ -517,7 +515,7 @@ func TestInvalidatingCache_GetOrSetWithLockEx_Error(t *testing.T) {
 			return nil
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	getterErr := errors.New("getter failed")
 	_, err = ic.GetOrSetWithLockEx(ctx, "lockExKeyErr", func(ctx context.Context, key string) (string, error) {
@@ -537,7 +535,7 @@ func TestInvalidatingCache_GetOrSetWithLockEx_PublishError(t *testing.T) {
 			return pubErr
 		},
 	}
-	ic := invcache.NewInvalidatingCache(store, mockPS, "local-instance")
+	ic := invcache.NewInvalidatingCache(store, mockPS)
 
 	val, err := ic.GetOrSetWithLockEx(ctx, "lockExKey", func(ctx context.Context, key string) (string, error) {
 		return "valExFromGetter", nil
@@ -589,7 +587,8 @@ func (m mockPubSub[M]) Subscribe(ctx context.Context, channelID string, optSubcr
 
 // mockSubscription is a mock implementation of pubsub.Subscription.
 type mockSubscription[M any] struct {
-	msgCh chan M
+	msgCh  chan M
+	doneCh chan struct{}
 }
 
 func (m *mockSubscription[M]) ChannelID() string {

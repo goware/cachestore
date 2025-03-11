@@ -6,7 +6,7 @@ toolchain go1.22.4
 
 require (
 	cloud.google.com/go/storage v1.44.0
-	github.com/goware/logger v0.1.0
+	github.com/goware/logger v0.3.0
 	github.com/goware/pubsub v0.6.1
 	github.com/goware/singleflight v0.2.0
 	github.com/hashicorp/golang-lru/v2 v2.0.5
