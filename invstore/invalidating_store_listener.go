@@ -43,42 +43,42 @@ func (ci *StoreInvalidator[V]) Listen(ctx context.Context) error {
 				continue
 			}
 
-			if len(msg.Keys) > 1 && hasWildcards(msg.Keys) {
+			if len(msg.Entries) > 1 && hasWildcards(msg.Entries) {
 				ci.log.Errorf("ClearAll() and DeletePrefix() do not support batch operations")
 				continue
 			}
 
-			for _, key := range msg.Keys {
-				ci.handleKey(ctx, key, msg.ContentHash)
+			for _, entry := range msg.Entries {
+				ci.handleKey(ctx, entry)
 			}
 		}
 	}
 }
 
-func (ci *StoreInvalidator[V]) handleKey(ctx context.Context, key string, msgHash string) {
+func (ci *StoreInvalidator[V]) handleKey(ctx context.Context, entry CacheInvalidationEntry) {
 	switch {
-	case key == "*":
+	case entry.Key == "*":
 		if err := ci.store.clearAll(ctx); err != nil {
 			ci.log.Errorf("failed to delete all store entries: %w", err)
 		}
 
-	case strings.HasSuffix(key, "*"):
-		prefix := removeSuffix(key, "*")
+	case strings.HasSuffix(entry.Key, "*"):
+		prefix := removeSuffix(entry.Key, "*")
 		if err := ci.store.deletePrefix(ctx, prefix); err != nil {
 			ci.log.Errorf("failed to delete store entries with prefix %s: %w", prefix, err)
 		}
 
 	default:
-		if msgHash == "" {
-			if err := ci.store.delete(ctx, key); err != nil {
-				ci.log.Errorf("failed to delete store entry for key %s: %v", key, err)
+		if entry.ContentHash == "" {
+			if err := ci.store.delete(ctx, entry.Key); err != nil {
+				ci.log.Errorf("failed to delete store entry for key %s: %v", entry.Key, err)
 			}
 			return
 		}
 
-		val, ok, err := ci.store.Get(ctx, key)
+		val, ok, err := ci.store.Get(ctx, entry.Key)
 		if err != nil {
-			ci.log.Errorf("failed to get key %q: %v", key, err)
+			ci.log.Errorf("failed to get key %q: %v", entry.Key, err)
 			return
 		}
 		if !ok {
@@ -87,23 +87,23 @@ func (ci *StoreInvalidator[V]) handleKey(ctx context.Context, key string, msgHas
 
 		currentHash, err := ComputeHash(val)
 		if err != nil {
-			ci.log.Errorf("failed to compute hash for key %q: %v", key, err)
+			ci.log.Errorf("failed to compute hash for key %q: %v", entry.Key, err)
 			return
 		}
 
-		if currentHash == msgHash {
+		if currentHash == entry.ContentHash {
 			return
 		}
 
-		if err := ci.store.delete(ctx, key); err != nil {
-			ci.log.Errorf("failed to delete store entry for key %s: %v", key, err)
+		if err := ci.store.delete(ctx, entry.Key); err != nil {
+			ci.log.Errorf("failed to delete store entry for key %s: %v", entry.Key, err)
 		}
 	}
 }
 
-func hasWildcards(keys []string) bool {
-	for _, k := range keys {
-		if k == "*" || strings.HasSuffix(k, "*") {
+func hasWildcards(entries []CacheInvalidationEntry) bool {
+	for _, e := range entries {
+		if e.Key == "*" || strings.HasSuffix(e.Key, "*") {
 			return true
 		}
 	}

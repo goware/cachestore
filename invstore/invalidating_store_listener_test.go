@@ -43,8 +43,8 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"key": "val",
 			},
 			msg: invstore.StoreInvalidationMessage{
-				Keys:   []string{"key"},
-				Origin: RemoteInstance,
+				Entries: []invstore.CacheInvalidationEntry{{Key: "key"}},
+				Origin:  RemoteInstance,
 			},
 			expectRemoved: []string{"foo"},
 		},
@@ -54,9 +54,19 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"key": "val",
 			},
 			msg: invstore.StoreInvalidationMessage{
-				Keys:        []string{"key"},
-				Origin:      RemoteInstance,
-				ContentHash: getHash("val"),
+				Entries: []invstore.CacheInvalidationEntry{{Key: "key", ContentHash: getHash("val")}},
+				Origin:  RemoteInstance,
+			},
+			expectRemain: []string{"key"},
+		},
+		{
+			name: "Single key, matching hash, complex val",
+			initial: map[string]string{
+				"key": "val",
+			},
+			msg: invstore.StoreInvalidationMessage{
+				Entries: []invstore.CacheInvalidationEntry{{Key: "key", ContentHash: getHash("val")}},
+				Origin:  RemoteInstance,
 			},
 			expectRemain: []string{"key"},
 		},
@@ -66,25 +76,89 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"key": "val",
 			},
 			msg: invstore.StoreInvalidationMessage{
-				Keys:        []string{"key"},
-				Origin:      RemoteInstance,
-				ContentHash: getHash("oldVal"),
+				Entries: []invstore.CacheInvalidationEntry{{Key: "key", ContentHash: getHash("oldVal")}},
+				Origin:  RemoteInstance,
 			},
 			expectRemoved: []string{"key"},
 		},
 		{
-			name: "Multiple keys",
+			name: "Multiple keys, no hash",
 			initial: map[string]string{
 				"key1": "val1",
 				"key2": "val2",
 				"key3": "val3",
 			},
 			msg: invstore.StoreInvalidationMessage{
-				Keys:   []string{"key1", "key2"},
-				Origin: RemoteInstance,
+				Entries: []invstore.CacheInvalidationEntry{{Key: "key1"}, {Key: "key2"}},
+				Origin:  RemoteInstance,
 			},
 			expectRemoved: []string{"key1", "key2"},
 			expectRemain:  []string{"key3"},
+		},
+		{
+			name: "Multiple keys, mix of hash and no hash",
+			initial: map[string]string{
+				"key1": "val1",
+				"key2": "val2",
+				"key3": "val3",
+			},
+			msg: invstore.StoreInvalidationMessage{
+				Entries: []invstore.CacheInvalidationEntry{
+					{Key: "key1", ContentHash: getHash("val1")},
+					{Key: "key2"},
+				},
+				Origin: RemoteInstance,
+			},
+			expectRemoved: []string{"key2"},
+			expectRemain:  []string{"key1", "key3"},
+		},
+		{
+			name: "Multiple keys, all hashes match",
+			initial: map[string]string{
+				"key1": "val1",
+				"key2": "val2",
+			},
+			msg: invstore.StoreInvalidationMessage{
+				Entries: []invstore.CacheInvalidationEntry{
+					{Key: "key1", ContentHash: getHash("val1")},
+					{Key: "key2", ContentHash: getHash("val2")},
+				},
+				Origin: RemoteInstance,
+			},
+			expectRemain: []string{"key1", "key2"},
+		},
+		{
+			name: "Multiple keys, all hashes mismatch",
+			initial: map[string]string{
+				"key1": "val1",
+				"key2": "val2",
+			},
+			msg: invstore.StoreInvalidationMessage{
+				Entries: []invstore.CacheInvalidationEntry{
+					{Key: "key1", ContentHash: getHash("old1")},
+					{Key: "key2", ContentHash: getHash("old2")},
+				},
+				Origin: RemoteInstance,
+			},
+			expectRemoved: []string{"key1", "key2"},
+		},
+		{
+			name: "Multiple keys: mix of match and mismatch",
+			initial: map[string]string{
+				"key1": "val1",
+				"key2": "val2",
+				"key3": "val3",
+			},
+			msg: invstore.StoreInvalidationMessage{
+				Entries: []invstore.CacheInvalidationEntry{
+					{Key: "key1", ContentHash: getHash("val1")},
+					{Key: "key2", ContentHash: getHash("old2")},
+					{Key: "key3"},
+				},
+				Origin: RemoteInstance,
+			},
+			expectRemoved: []string{"key2", "key3"},
+			expectRemain:  []string{"key1"},
 		},
 		{
 			name: "ClearAll success",
@@ -93,8 +167,8 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"key2": "val2",
 			},
 			msg: invstore.StoreInvalidationMessage{
-				Keys:   []string{"*"},
-				Origin: RemoteInstance,
+				Entries: []invstore.CacheInvalidationEntry{{Key: "*"}},
+				Origin:  RemoteInstance,
 			},
 			expectRemoved: []string{"key1", "key2"},
 		},
@@ -106,8 +180,8 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"xyz":  "zzz",
 			},
 			msg: invstore.StoreInvalidationMessage{
-				Keys:   []string{"abc*"},
-				Origin: RemoteInstance,
+				Entries: []invstore.CacheInvalidationEntry{{Key: "abc*"}},
+				Origin:  RemoteInstance,
 			},
 			expectRemoved: []string{"abc1", "abc2"},
 			expectRemain:  []string{"xyz"},
@@ -119,8 +193,8 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"key2": "val2",
 			},
 			msg: invstore.StoreInvalidationMessage{
-				Keys:   []string{"key", "*"},
-				Origin: RemoteInstance,
+				Entries: []invstore.CacheInvalidationEntry{{Key: "key"}, {Key: "*"}},
+				Origin:  RemoteInstance,
 			},
 			expectRemoved: []string{},
 			expectRemain:  []string{"key1", "key2"},
@@ -132,8 +206,8 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"key2": "val2",
 			},
 			msg: invstore.StoreInvalidationMessage{
-				Keys:   []string{"key", "key*"},
-				Origin: RemoteInstance,
+				Entries: []invstore.CacheInvalidationEntry{{Key: "key"}, {Key: "key*"}},
+				Origin:  RemoteInstance,
 			},
 			expectRemoved: []string{},
 			expectRemain:  []string{"key1", "key2"},
@@ -144,8 +218,8 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"localKey": "val",
 			},
 			msg: invstore.StoreInvalidationMessage{
-				Keys:   []string{"localKey"},
-				Origin: LocalInstance,
+				Entries: []invstore.CacheInvalidationEntry{{Key: "localKey"}},
+				Origin:  LocalInstance,
 			},
 			expectRemain: []string{"localKey"},
 		},

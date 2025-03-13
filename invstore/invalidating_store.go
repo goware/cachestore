@@ -23,10 +23,14 @@ func newInstanceID() InstanceID {
 	return InstanceID(uuid.NewString())
 }
 
+type CacheInvalidationEntry struct {
+	Key         string `json:"key"`
+	ContentHash string `json:"content_hash,omitempty"`
+}
+
 type StoreInvalidationMessage struct {
-	Keys        []string   `json:"keys"`
-	Origin      InstanceID `json:"origin"`
-	ContentHash string     `json:"content_hash"`
+	Entries []CacheInvalidationEntry `json:"entries"`
+	Origin  InstanceID               `json:"origin"`
 }
 
 type InvalidatingStore[V any] struct {
@@ -67,7 +71,7 @@ func (ic *InvalidatingStore[V]) Set(ctx context.Context, key string, value V) er
 	if err != nil {
 		hash = ""
 	}
-	return ic.publishInvalidation(ctx, []string{key}, hash)
+	return ic.publishInvalidation(ctx, []CacheInvalidationEntry{{Key: key, ContentHash: hash}})
 }
 
 func (ic *InvalidatingStore[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
@@ -78,14 +82,25 @@ func (ic *InvalidatingStore[V]) SetEx(ctx context.Context, key string, value V, 
 	if err != nil {
 		hash = ""
 	}
-	return ic.publishInvalidation(ctx, []string{key}, hash)
+	return ic.publishInvalidation(ctx, []CacheInvalidationEntry{{Key: key, ContentHash: hash}})
 }
 
 func (ic *InvalidatingStore[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
 	if err := ic.store.BatchSet(ctx, keys, values); err != nil {
 		return err
 	}
-	return ic.publishInvalidation(ctx, keys, "")
+	entries := make([]CacheInvalidationEntry, len(keys))
+	for i, key := range keys {
+		hash, err := ComputeHash(values[i])
+		if err != nil {
+			hash = ""
+		}
+		entries[i] = CacheInvalidationEntry{
+			Key:         key,
+			ContentHash: hash,
+		}
+	}
+	return ic.publishInvalidation(ctx, entries)
 }
 
 func (ic *InvalidatingStore[V]) BatchSetEx(
@@ -97,14 +112,25 @@ func (ic *InvalidatingStore[V]) BatchSetEx(
 	if err := ic.store.BatchSetEx(ctx, keys, values, ttl); err != nil {
 		return err
 	}
-	return ic.publishInvalidation(ctx, keys, "")
+	entries := make([]CacheInvalidationEntry, len(keys))
+	for i, key := range keys {
+		hash, err := ComputeHash(values[i])
+		if err != nil {
+			hash = ""
+		}
+		entries[i] = CacheInvalidationEntry{
+			Key:         key,
+			ContentHash: hash,
+		}
+	}
+	return ic.publishInvalidation(ctx, entries)
 }
 
 func (ic *InvalidatingStore[V]) Delete(ctx context.Context, key string) error {
 	if err := ic.delete(ctx, key); err != nil {
 		return err
 	}
-	return ic.publishInvalidation(ctx, []string{key}, "")
+	return ic.publishInvalidation(ctx, []CacheInvalidationEntry{{Key: key}})
 }
 
 func (ic *InvalidatingStore[V]) delete(ctx context.Context, key string) error {
@@ -118,7 +144,7 @@ func (ic *InvalidatingStore[V]) DeletePrefix(ctx context.Context, keyPrefix stri
 	if err := ic.deletePrefix(ctx, keyPrefix); err != nil {
 		return err
 	}
-	return ic.publishInvalidation(ctx, []string{fmt.Sprintf("%s*", keyPrefix)}, "")
+	return ic.publishInvalidation(ctx, []CacheInvalidationEntry{{Key: fmt.Sprintf("%s*", keyPrefix)}})
 }
 
 func (ic *InvalidatingStore[V]) deletePrefix(ctx context.Context, keyPrefix string) error {
@@ -132,7 +158,7 @@ func (ic *InvalidatingStore[V]) ClearAll(ctx context.Context) error {
 	if err := ic.clearAll(ctx); err != nil {
 		return err
 	}
-	return ic.publishInvalidation(ctx, []string{"*"}, "")
+	return ic.publishInvalidation(ctx, []CacheInvalidationEntry{{Key: "*"}})
 }
 
 func (ic *InvalidatingStore[V]) clearAll(ctx context.Context) error {
@@ -156,7 +182,7 @@ func (ic *InvalidatingStore[V]) GetOrSetWithLock(ctx context.Context, key string
 		if err != nil {
 			hash = ""
 		}
-		if err := ic.publishInvalidation(ctx, []string{key}, hash); err != nil {
+		if err := ic.publishInvalidation(ctx, []CacheInvalidationEntry{{Key: key, ContentHash: hash}}); err != nil {
 			return value, err
 		}
 	}
@@ -177,7 +203,7 @@ func (ic *InvalidatingStore[V]) GetOrSetWithLockEx(ctx context.Context, key stri
 		if err != nil {
 			hash = ""
 		}
-		if err := ic.publishInvalidation(ctx, []string{key}, hash); err != nil {
+		if err := ic.publishInvalidation(ctx, []CacheInvalidationEntry{{Key: key, ContentHash: hash}}); err != nil {
 			return value, err
 		}
 	}
@@ -201,11 +227,10 @@ func wrapGetterWasCalled[V any](
 }
 
 // Publish invalidation event
-func (ic *InvalidatingStore[V]) publishInvalidation(ctx context.Context, keys []string, hash string) error {
+func (ic *InvalidatingStore[V]) publishInvalidation(ctx context.Context, entries []CacheInvalidationEntry) error {
 	msg := StoreInvalidationMessage{
-		Keys:        keys,
-		Origin:      ic.instanceID, // we need this to skip invalidating the store for the same key from the same instance
-		ContentHash: hash,
+		Entries: entries,
+		Origin:  ic.instanceID, // we need this to skip invalidating the store for the same key from the same instance
 	}
 	return ic.pubsub.Publish(ctx, DefaultChannelID, msg)
 }

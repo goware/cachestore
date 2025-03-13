@@ -30,7 +30,8 @@ func TestInvalidatingCache_Set_Success(t *testing.T) {
 	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invstore.StoreInvalidationMessage) error {
 		publishCalled = true
 		require.Equal(t, invstore.DefaultChannelID, channelID)
-		require.Equal(t, "key", msg.Keys[0])
+		require.Equal(t, "key", msg.Entries[0].Key)
+		require.Equal(t, getHash(t, "val"), msg.Entries[0].ContentHash)
 		require.Equal(t, ic.GetInstanceID(), msg.Origin)
 		return nil
 	}
@@ -79,7 +80,8 @@ func TestInvalidatingCache_SetEx_Success(t *testing.T) {
 
 	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invstore.StoreInvalidationMessage) error {
 		published = true
-		require.Equal(t, "key", msg.Keys[0])
+		require.Equal(t, "key", msg.Entries[0].Key)
+		require.Equal(t, getHash(t, "val"), msg.Entries[0].ContentHash)
 		require.Equal(t, ic.GetInstanceID(), msg.Origin)
 		return nil
 	}
@@ -120,10 +122,10 @@ func TestInvalidatingCache_BatchSet_Success(t *testing.T) {
 	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 
-	var publishedKeys []string
+	var publishedEntries []invstore.CacheInvalidationEntry
 	mockPS := &mockPubSub[invstore.StoreInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invstore.StoreInvalidationMessage) error {
-			publishedKeys = append(publishedKeys, msg.Keys...)
+			publishedEntries = append(publishedEntries, msg.Entries...)
 			return nil
 		},
 	}
@@ -141,7 +143,7 @@ func TestInvalidatingCache_BatchSet_Success(t *testing.T) {
 		require.Equal(t, vals[i], got)
 	}
 
-	require.ElementsMatch(t, []string{"key1", "key2"}, publishedKeys)
+	require.ElementsMatch(t, []invstore.CacheInvalidationEntry{{Key: "key1", ContentHash: getHash(t, "val1")}, {Key: "key2", ContentHash: getHash(t, "val2")}}, publishedEntries)
 }
 
 func TestInvalidatingCache_BatchSet_PublishError(t *testing.T) {
@@ -152,7 +154,7 @@ func TestInvalidatingCache_BatchSet_PublishError(t *testing.T) {
 	publishErr := errors.New("BatchSet: publish invalidation failed for keys: [key2]")
 	mockPS := &mockPubSub[invstore.StoreInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invstore.StoreInvalidationMessage) error {
-			if msg.Keys[1] == "key2" {
+			if msg.Entries[1].Key == "key2" {
 				return publishErr
 			}
 			return nil
@@ -179,10 +181,10 @@ func TestInvalidatingCache_BatchSetEx_Success(t *testing.T) {
 	store, err := memlru.NewWithSize[string](N, cachestore.WithDefaultKeyExpiry(time.Minute))
 	require.NoError(t, err)
 
-	var published []string
+	var published []invstore.CacheInvalidationEntry
 	mockPS := &mockPubSub[invstore.StoreInvalidationMessage]{
 		publishFunc: func(ctx context.Context, channelID string, msg invstore.StoreInvalidationMessage) error {
-			published = append(published, msg.Keys...)
+			published = append(published, msg.Entries...)
 			return nil
 		},
 	}
@@ -199,7 +201,7 @@ func TestInvalidatingCache_BatchSetEx_Success(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, vals[i], got)
 	}
-	require.ElementsMatch(t, []string{"key1", "key2"}, published)
+	require.ElementsMatch(t, []invstore.CacheInvalidationEntry{{Key: "key1", ContentHash: getHash(t, "val1")}, {Key: "key2", ContentHash: getHash(t, "val2")}}, published)
 }
 
 func TestInvalidatingCache_BatchSetEx_PublishError(t *testing.T) {
@@ -243,7 +245,8 @@ func TestInvalidatingCache_Delete_Success(t *testing.T) {
 
 	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invstore.StoreInvalidationMessage) error {
 		published = true
-		require.Equal(t, "key", msg.Keys[0])
+		require.Equal(t, "key", msg.Entries[0].Key)
+		require.Equal(t, "", msg.Entries[0].ContentHash)
 		require.Equal(t, ic.GetInstanceID(), msg.Origin)
 		return nil
 	}
@@ -301,7 +304,8 @@ func TestInvalidatingCache_DeletePrefix_Success(t *testing.T) {
 
 	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invstore.StoreInvalidationMessage) error {
 		published = true
-		require.Equal(t, "abc*", msg.Keys[0])
+		require.Equal(t, "abc*", msg.Entries[0].Key)
+		require.Equal(t, "", msg.Entries[0].ContentHash)
 		require.Equal(t, ic.GetInstanceID(), msg.Origin)
 		return nil
 	}
@@ -361,7 +365,8 @@ func TestInvalidatingCache_ClearAll_Success(t *testing.T) {
 
 	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invstore.StoreInvalidationMessage) error {
 		published = true
-		require.Equal(t, "*", msg.Keys[0])
+		require.Equal(t, "*", msg.Entries[0].Key)
+		require.Equal(t, "", msg.Entries[0].ContentHash)
 		require.Equal(t, ic.GetInstanceID(), msg.Origin)
 		return nil
 	}
@@ -413,7 +418,8 @@ func TestInvalidatingCache_GetOrSetWithLock_Success(t *testing.T) {
 
 	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invstore.StoreInvalidationMessage) error {
 		published = true
-		require.Equal(t, "lockedKey", msg.Keys[0])
+		require.Equal(t, "lockedKey", msg.Entries[0].Key)
+		require.Equal(t, getHash(t, "valFromGetter"), msg.Entries[0].ContentHash)
 		require.Equal(t, ic.GetInstanceID(), msg.Origin)
 		return nil
 	}
@@ -486,7 +492,8 @@ func TestInvalidatingCache_GetOrSetWithLockEx_Success(t *testing.T) {
 
 	mockPS.publishFunc = func(ctx context.Context, channelID string, msg invstore.StoreInvalidationMessage) error {
 		published = true
-		require.Equal(t, "lockExKey", msg.Keys[0])
+		require.Equal(t, "lockExKey", msg.Entries[0].Key)
+		require.Equal(t, getHash(t, "valExFromGetter"), msg.Entries[0].ContentHash)
 		require.Equal(t, ic.GetInstanceID(), msg.Origin)
 		return nil
 	}
@@ -547,6 +554,46 @@ func TestInvalidatingCache_GetOrSetWithLockEx_PublishError(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "valExFromGetter", got)
+}
+
+func TestComputeHash(t *testing.T) {
+	// Simple string.
+	hash1, err := invstore.ComputeHash("hello")
+	require.NoError(t, err)
+	hash2, err := invstore.ComputeHash("hello")
+	require.NoError(t, err)
+	require.Equal(t, hash1, hash2)
+
+	// Empty string.
+	emptyHash1, err := invstore.ComputeHash("")
+	require.NoError(t, err)
+	emptyHash2, err := invstore.ComputeHash("")
+	require.NoError(t, err)
+	require.Equal(t, emptyHash1, emptyHash2)
+
+	// Struct.
+	type Person struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+	p := Person{"Alice", 30}
+	personHash1, err := invstore.ComputeHash(p)
+	require.NoError(t, err)
+	personHash2, err := invstore.ComputeHash(p)
+	require.NoError(t, err)
+	require.Equal(t, personHash1, personHash2)
+
+	// Mismatch on struct change.
+	p2 := Person{"Alice", 31}
+	personHash3, err := invstore.ComputeHash(p2)
+	require.NoError(t, err)
+	require.NotEqual(t, personHash1, personHash3)
+}
+
+func getHash(t *testing.T, val string) string {
+	h, err := invstore.ComputeHash(val)
+	require.NoError(t, err)
+	return h
 }
 
 // mockPubSub is a mock implementation of pubsub.PubSub.
