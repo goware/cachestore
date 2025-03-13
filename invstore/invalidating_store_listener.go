@@ -1,4 +1,4 @@
-package invcache
+package invstore
 
 import (
 	"context"
@@ -8,21 +8,21 @@ import (
 	"github.com/goware/pubsub"
 )
 
-type CacheInvalidator[V any] struct {
+type StoreInvalidator[V any] struct {
 	log    logger.Logger
-	store  InvalidatingCache[V]
-	pubsub pubsub.PubSub[CacheInvalidationMessage]
+	store  InvalidatingStore[V]
+	pubsub pubsub.PubSub[StoreInvalidationMessage]
 }
 
-func NewCacheInvalidator[V any](log logger.Logger, store InvalidatingCache[V], ps pubsub.PubSub[CacheInvalidationMessage]) *CacheInvalidator[V] {
-	return &CacheInvalidator[V]{
+func NewStoreInvalidator[V any](log logger.Logger, store InvalidatingStore[V], ps pubsub.PubSub[StoreInvalidationMessage]) *StoreInvalidator[V] {
+	return &StoreInvalidator[V]{
 		log:    log,
 		store:  store,
 		pubsub: ps,
 	}
 }
 
-func (ci *CacheInvalidator[V]) Listen(ctx context.Context) error {
+func (ci *StoreInvalidator[V]) Listen(ctx context.Context) error {
 	sub, err := ci.pubsub.Subscribe(ctx, DefaultChannelID)
 	if err != nil {
 		return err
@@ -49,28 +49,54 @@ func (ci *CacheInvalidator[V]) Listen(ctx context.Context) error {
 			}
 
 			for _, key := range msg.Keys {
-				ci.handleKey(ctx, key)
+				ci.handleKey(ctx, key, msg.ContentHash)
 			}
 		}
 	}
 }
 
-func (ci *CacheInvalidator[V]) handleKey(ctx context.Context, key string) {
+func (ci *StoreInvalidator[V]) handleKey(ctx context.Context, key string, msgHash string) {
 	switch {
 	case key == "*":
 		if err := ci.store.clearAll(ctx); err != nil {
-			ci.log.Errorf("failed to delete all cache entries: %w", err)
+			ci.log.Errorf("failed to delete all store entries: %w", err)
 		}
 
 	case strings.HasSuffix(key, "*"):
 		prefix := removeSuffix(key, "*")
 		if err := ci.store.deletePrefix(ctx, prefix); err != nil {
-			ci.log.Errorf("failed to delete cache entries with prefix %s: %w", prefix, err)
+			ci.log.Errorf("failed to delete store entries with prefix %s: %w", prefix, err)
 		}
 
 	default:
+		if msgHash == "" {
+			if err := ci.store.delete(ctx, key); err != nil {
+				ci.log.Errorf("failed to delete store entry for key %s: %v", key, err)
+			}
+			return
+		}
+
+		val, ok, err := ci.store.Get(ctx, key)
+		if err != nil {
+			ci.log.Errorf("failed to get key %q: %v", key, err)
+			return
+		}
+		if !ok {
+			return
+		}
+
+		currentHash, err := ComputeHash(val)
+		if err != nil {
+			ci.log.Errorf("failed to compute hash for key %q: %v", key, err)
+			return
+		}
+
+		if currentHash == msgHash {
+			return
+		}
+
 		if err := ci.store.delete(ctx, key); err != nil {
-			ci.log.Errorf("failed to delete cache entry for key %s: %w", key, err)
+			ci.log.Errorf("failed to delete store entry for key %s: %v", key, err)
 		}
 	}
 }

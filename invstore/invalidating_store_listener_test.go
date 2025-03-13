@@ -1,4 +1,4 @@
-package invcache_test
+package invstore_test
 
 import (
 	"context"
@@ -10,37 +10,67 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/goware/cachestore"
-	"github.com/goware/cachestore/invcache"
+	"github.com/goware/cachestore/invstore"
 	"github.com/goware/cachestore/memlru"
 	"github.com/goware/logger"
 	"github.com/goware/pubsub"
 )
 
 const (
-	RemoteInstance = invcache.InstanceID("remote-instance")
-	LocalInstance  = invcache.InstanceID("local-instance")
+	RemoteInstance = invstore.InstanceID("remote-instance")
+	LocalInstance  = invstore.InstanceID("local-instance")
 )
 
 func TestCacheInvalidator_Listen(t *testing.T) {
 	type testCase struct {
 		name          string
 		initial       map[string]string
-		msg           invcache.CacheInvalidationMessage
+		msg           invstore.StoreInvalidationMessage
 		expectRemoved []string
 		expectRemain  []string
 	}
 
+	getHash := func(val string) string {
+		h, err := invstore.ComputeHash(val)
+		require.NoError(t, err)
+		return h
+	}
+
 	tests := []testCase{
 		{
-			name: "Single key",
+			name: "Single key, no hash",
 			initial: map[string]string{
 				"key": "val",
 			},
-			msg: invcache.CacheInvalidationMessage{
+			msg: invstore.StoreInvalidationMessage{
 				Keys:   []string{"key"},
 				Origin: RemoteInstance,
 			},
 			expectRemoved: []string{"foo"},
+		},
+		{
+			name: "Single key, matching hash",
+			initial: map[string]string{
+				"key": "val",
+			},
+			msg: invstore.StoreInvalidationMessage{
+				Keys:        []string{"key"},
+				Origin:      RemoteInstance,
+				ContentHash: getHash("val"),
+			},
+			expectRemain: []string{"key"},
+		},
+		{
+			name: "Single key, mismatching hash",
+			initial: map[string]string{
+				"key": "val",
+			},
+			msg: invstore.StoreInvalidationMessage{
+				Keys:        []string{"key"},
+				Origin:      RemoteInstance,
+				ContentHash: getHash("oldVal"),
+			},
+			expectRemoved: []string{"key"},
 		},
 		{
 			name: "Multiple keys",
@@ -49,7 +79,7 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"key2": "val2",
 				"key3": "val3",
 			},
-			msg: invcache.CacheInvalidationMessage{
+			msg: invstore.StoreInvalidationMessage{
 				Keys:   []string{"key1", "key2"},
 				Origin: RemoteInstance,
 			},
@@ -62,7 +92,7 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"key1": "val1",
 				"key2": "val2",
 			},
-			msg: invcache.CacheInvalidationMessage{
+			msg: invstore.StoreInvalidationMessage{
 				Keys:   []string{"*"},
 				Origin: RemoteInstance,
 			},
@@ -75,7 +105,7 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"abc2": "val2",
 				"xyz":  "zzz",
 			},
-			msg: invcache.CacheInvalidationMessage{
+			msg: invstore.StoreInvalidationMessage{
 				Keys:   []string{"abc*"},
 				Origin: RemoteInstance,
 			},
@@ -88,7 +118,7 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"key1": "val1",
 				"key2": "val2",
 			},
-			msg: invcache.CacheInvalidationMessage{
+			msg: invstore.StoreInvalidationMessage{
 				Keys:   []string{"key", "*"},
 				Origin: RemoteInstance,
 			},
@@ -101,7 +131,7 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 				"key1": "val1",
 				"key2": "val2",
 			},
-			msg: invcache.CacheInvalidationMessage{
+			msg: invstore.StoreInvalidationMessage{
 				Keys:   []string{"key", "key*"},
 				Origin: RemoteInstance,
 			},
@@ -113,7 +143,7 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 			initial: map[string]string{
 				"localKey": "val",
 			},
-			msg: invcache.CacheInvalidationMessage{
+			msg: invstore.StoreInvalidationMessage{
 				Keys:   []string{"localKey"},
 				Origin: LocalInstance,
 			},
@@ -126,13 +156,13 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			sub := &mockSubscription[invcache.CacheInvalidationMessage]{
-				msgCh:  make(chan invcache.CacheInvalidationMessage, 10),
+			sub := &mockSubscription[invstore.StoreInvalidationMessage]{
+				msgCh:  make(chan invstore.StoreInvalidationMessage, 10),
 				doneCh: make(chan struct{}),
 			}
-			mps := &mockPubSub[invcache.CacheInvalidationMessage]{
-				subscribeFunc: func(ctx context.Context, chID string, opt ...string) (pubsub.Subscription[invcache.CacheInvalidationMessage], error) {
-					require.Equal(t, "cache_invalidation", chID)
+			mps := &mockPubSub[invstore.StoreInvalidationMessage]{
+				subscribeFunc: func(ctx context.Context, chID string, opt ...string) (pubsub.Subscription[invstore.StoreInvalidationMessage], error) {
+					require.Equal(t, "store_invalidation", chID)
 					return sub, nil
 				},
 			}
@@ -145,8 +175,8 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 			}
 
 			logger := logger.Nop()
-			ic := invcache.NewInvalidatingCache(store, mps)
-			ci := invcache.NewCacheInvalidator(logger, *ic, mps)
+			ic := invstore.NewInvalidatingStore(store, mps)
+			ci := invstore.NewStoreInvalidator(logger, *ic, mps)
 
 			var wg sync.WaitGroup
 			wg.Add(1)
