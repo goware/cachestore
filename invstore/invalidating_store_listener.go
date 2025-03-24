@@ -8,21 +8,21 @@ import (
 	"github.com/goware/pubsub"
 )
 
-type StoreInvalidator[V any] struct {
+type StoreInvalidator struct {
 	log    logger.Logger
-	store  InvalidatingStore[V]
+	store  LocalInvStore
 	pubsub pubsub.PubSub[StoreInvalidationMessage]
 }
 
-func NewStoreInvalidator[V any](log logger.Logger, store InvalidatingStore[V], ps pubsub.PubSub[StoreInvalidationMessage]) *StoreInvalidator[V] {
-	return &StoreInvalidator[V]{
+func NewStoreInvalidator(log logger.Logger, store LocalInvStore, ps pubsub.PubSub[StoreInvalidationMessage]) *StoreInvalidator {
+	return &StoreInvalidator{
 		log:    log,
 		store:  store,
 		pubsub: ps,
 	}
 }
 
-func (ci *StoreInvalidator[V]) Listen(ctx context.Context) error {
+func (ci *StoreInvalidator) Listen(ctx context.Context) error {
 	sub, err := ci.pubsub.Subscribe(ctx, DefaultChannelID)
 	if err != nil {
 		return err
@@ -55,28 +55,28 @@ func (ci *StoreInvalidator[V]) Listen(ctx context.Context) error {
 	}
 }
 
-func (ci *StoreInvalidator[V]) handleKey(ctx context.Context, entry CacheInvalidationEntry) {
+func (ci *StoreInvalidator) handleKey(ctx context.Context, entry CacheInvalidationEntry) {
 	switch {
 	case entry.Key == "*":
-		if err := ci.store.clearAll(ctx); err != nil {
+		if err := ci.store.ClearAllLocal(ctx); err != nil {
 			ci.log.Errorf("failed to delete all store entries: %w", err)
 		}
 
 	case strings.HasSuffix(entry.Key, "*"):
 		prefix := removeSuffix(entry.Key, "*")
-		if err := ci.store.deletePrefix(ctx, prefix); err != nil {
+		if err := ci.store.DeletePrefixLocal(ctx, prefix); err != nil {
 			ci.log.Errorf("failed to delete store entries with prefix %s: %w", prefix, err)
 		}
 
 	default:
 		if entry.ContentHash == "" {
-			if err := ci.store.delete(ctx, entry.Key); err != nil {
+			if err := ci.store.DeleteLocal(ctx, entry.Key); err != nil {
 				ci.log.Errorf("failed to delete store entry for key %s: %v", entry.Key, err)
 			}
 			return
 		}
 
-		val, ok, err := ci.store.Get(ctx, entry.Key)
+		val, ok, err := ci.store.GetAny(ctx, entry.Key)
 		if err != nil {
 			ci.log.Errorf("failed to get key %q: %v", entry.Key, err)
 			return
@@ -95,7 +95,7 @@ func (ci *StoreInvalidator[V]) handleKey(ctx context.Context, entry CacheInvalid
 			return
 		}
 
-		if err := ci.store.delete(ctx, entry.Key); err != nil {
+		if err := ci.store.DeleteLocal(ctx, entry.Key); err != nil {
 			ci.log.Errorf("failed to delete store entry for key %s: %v", entry.Key, err)
 		}
 	}

@@ -250,7 +250,7 @@ func TestCacheInvalidator_Listen(t *testing.T) {
 
 			logger := logger.Nop()
 			ic := invstore.NewInvalidatingStore(store, mps)
-			ci := invstore.NewStoreInvalidator(logger, *ic, mps)
+			ci := invstore.NewStoreInvalidator(logger, ic, mps)
 
 			var wg sync.WaitGroup
 			wg.Add(1)
