@@ -15,6 +15,8 @@ var (
 	ErrNotSupported     = errors.New("cachestore: not supported")
 )
 
+// TODO: would be nice to pass K here as well..
+
 type Store[V any] interface {
 	// Returns true if the key exists.
 	Exists(ctx context.Context, key string) (bool, error)
@@ -65,6 +67,7 @@ type Store[V any] interface {
 	GetOrSetWithLockEx(ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration) (V, error)
 }
 
+// TODO rename to StoreSweeper ..? and SweepExpired() .. and what is this "Every" thing .. weird
 type StoreCleaner interface {
 	// CleanExpiredEvery cleans expired keys every d duration.
 	// If onError is not nil, it will be called when an error occurs.
