@@ -14,7 +14,7 @@ func TestCompose(t *testing.T) {
 	m1s := NewMockStore[string]()
 	m2s := NewMockStore[string]()
 
-	cs, err := cachestore.Compose(m1s, m2s)
+	cs, err := cachestore.ComposeStores(m1s, m2s)
 	assertNoError(t, err)
 
 	ctx := context.Background()

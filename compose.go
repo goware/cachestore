@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-type ComposeStore[V any] struct {
+type composeStore[V any] struct {
 	stores []Store[V]
 	name   string
 }
 
-func Compose[V any](stores ...Store[V]) (Store[V], error) {
+func ComposeStores[V any](stores ...Store[V]) (Store[V], error) {
 	if len(stores) == 0 {
 		return nil, fmt.Errorf("cachestore: attempting to compose with empty store list")
 	}
@@ -20,18 +20,26 @@ func Compose[V any](stores ...Store[V]) (Store[V], error) {
 	for _, s := range stores {
 		names = append(names, s.Name())
 	}
-	cs := &ComposeStore[V]{
+	cs := &composeStore[V]{
 		stores: stores,
-		name:   strings.Join(names, "+"),
+		name:   strings.Join(names, ">"),
 	}
 	return cs, nil
 }
 
-func (cs *ComposeStore[V]) Name() string {
+func ComposeBackends[V any](backends ...Backend) (Store[V], error) {
+	stores := make([]Store[V], len(backends))
+	for i, backend := range backends {
+		stores[i] = OpenStore[V](backend)
+	}
+	return ComposeStores(stores...)
+}
+
+func (cs *composeStore[V]) Name() string {
 	return cs.name
 }
 
-func (cs *ComposeStore[V]) Exists(ctx context.Context, key string) (bool, error) {
+func (cs *composeStore[V]) Exists(ctx context.Context, key string) (bool, error) {
 	for _, s := range cs.stores {
 		exists, err := s.Exists(ctx, key)
 		if err != nil {
@@ -44,7 +52,7 @@ func (cs *ComposeStore[V]) Exists(ctx context.Context, key string) (bool, error)
 	return false, nil
 }
 
-func (cs *ComposeStore[V]) Set(ctx context.Context, key string, value V) error {
+func (cs *composeStore[V]) Set(ctx context.Context, key string, value V) error {
 	for _, s := range cs.stores {
 		err := s.Set(ctx, key, value)
 		if err != nil {
@@ -54,7 +62,7 @@ func (cs *ComposeStore[V]) Set(ctx context.Context, key string, value V) error {
 	return nil
 }
 
-func (cs *ComposeStore[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
+func (cs *composeStore[V]) SetEx(ctx context.Context, key string, value V, ttl time.Duration) error {
 	for _, s := range cs.stores {
 		err := s.SetEx(ctx, key, value, ttl)
 		if err != nil {
@@ -64,7 +72,7 @@ func (cs *ComposeStore[V]) SetEx(ctx context.Context, key string, value V, ttl t
 	return nil
 }
 
-func (cs *ComposeStore[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
+func (cs *composeStore[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
 	for _, s := range cs.stores {
 		err := s.BatchSet(ctx, keys, values)
 		if err != nil {
@@ -74,7 +82,7 @@ func (cs *ComposeStore[V]) BatchSet(ctx context.Context, keys []string, values [
 	return nil
 }
 
-func (cs *ComposeStore[V]) BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error {
+func (cs *composeStore[V]) BatchSetEx(ctx context.Context, keys []string, values []V, ttl time.Duration) error {
 	for _, s := range cs.stores {
 		err := s.BatchSetEx(ctx, keys, values, ttl)
 		if err != nil {
@@ -84,7 +92,7 @@ func (cs *ComposeStore[V]) BatchSetEx(ctx context.Context, keys []string, values
 	return nil
 }
 
-func (cs *ComposeStore[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
+func (cs *composeStore[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
 	var out V
 	var ttl *time.Duration
 	var exists bool
@@ -103,7 +111,7 @@ func (cs *ComposeStore[V]) GetEx(ctx context.Context, key string) (V, *time.Dura
 	return out, ttl, exists, nil
 }
 
-func (cs *ComposeStore[V]) Get(ctx context.Context, key string) (V, bool, error) {
+func (cs *composeStore[V]) Get(ctx context.Context, key string) (V, bool, error) {
 	var out V
 	var exists bool
 	var err error
@@ -120,7 +128,7 @@ func (cs *ComposeStore[V]) Get(ctx context.Context, key string) (V, bool, error)
 	return out, exists, err
 }
 
-func (cs *ComposeStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool, error) {
+func (cs *composeStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, []bool, error) {
 	fout := make([]V, len(keys))
 	fexists := make([]bool, len(keys))
 
@@ -181,7 +189,7 @@ func (cs *ComposeStore[V]) BatchGet(ctx context.Context, keys []string) ([]V, []
 	return fout, fexists, nil
 }
 
-func (cs *ComposeStore[V]) Delete(ctx context.Context, key string) error {
+func (cs *composeStore[V]) Delete(ctx context.Context, key string) error {
 	for _, s := range cs.stores {
 		err := s.Delete(ctx, key)
 		if err != nil {
@@ -191,7 +199,7 @@ func (cs *ComposeStore[V]) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (cs *ComposeStore[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
+func (cs *composeStore[V]) DeletePrefix(ctx context.Context, keyPrefix string) error {
 	if len(keyPrefix) < 4 {
 		return fmt.Errorf("cachestore: DeletePrefix keyPrefix '%s' must be at least 4 characters long", keyPrefix)
 	}
@@ -205,7 +213,7 @@ func (cs *ComposeStore[V]) DeletePrefix(ctx context.Context, keyPrefix string) e
 	return nil
 }
 
-func (cs *ComposeStore[V]) ClearAll(ctx context.Context) error {
+func (cs *composeStore[V]) ClearAll(ctx context.Context) error {
 	for _, s := range cs.stores {
 		err := s.ClearAll(ctx)
 		if err != nil {
@@ -215,14 +223,14 @@ func (cs *ComposeStore[V]) ClearAll(ctx context.Context) error {
 	return nil
 }
 
-func (cs *ComposeStore[V]) GetOrSetWithLock(
+func (cs *composeStore[V]) GetOrSetWithLock(
 	ctx context.Context, key string, getter func(context.Context, string) (V, error),
 ) (V, error) {
 	// Skip all intermediate stores and use only the last one as usually it's the most reliable one
 	return cs.stores[len(cs.stores)-1].GetOrSetWithLock(ctx, key, getter)
 }
 
-func (cs *ComposeStore[V]) GetOrSetWithLockEx(
+func (cs *composeStore[V]) GetOrSetWithLockEx(
 	ctx context.Context, key string, getter func(context.Context, string) (V, error), ttl time.Duration,
 ) (V, error) {
 	// Skip all intermediate stores and use only the last one as usually it's the most reliable one
