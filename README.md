@@ -5,6 +5,6 @@ backends.
 
 ## LICENSE
 
-Copyright (c) 2021-present [Horizon Blockchain Games Inc](https://horizon.io).
+Copyright (c) 2021-present [Sequence Platforms Inc](https://sequence.xyz).
 
 Licensed under [Apache-2.0](./LICENSE)

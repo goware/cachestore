@@ -9,15 +9,17 @@ import (
 var (
 	MaxKeyLength = 200
 
-	ErrKeyLengthTooLong = errors.New("cachestore: key length is too long")
-	ErrInvalidKey       = errors.New("cachestore: invalid key")
-	ErrInvalidKeyPrefix = errors.New("cachestore: invalid key prefix")
-	ErrNotSupported     = errors.New("cachestore: not supported")
+	ErrKeyLengthTooLong     = errors.New("cachestore: key length is too long")
+	ErrInvalidKey           = errors.New("cachestore: invalid key")
+	ErrInvalidKeyPrefix     = errors.New("cachestore: invalid key prefix")
+	ErrNotSupported         = errors.New("cachestore: not supported")
+	ErrBackendTypeAssertion = errors.New("cachestore: backend type assertion failed")
 )
 
-// TODO: would be nice to pass K here as well..
-
 type Store[V any] interface {
+	// Name returns the name of the store.
+	Name() string
+
 	// Returns true if the key exists.
 	Exists(ctx context.Context, key string) (bool, error)
 
@@ -68,12 +70,26 @@ type Store[V any] interface {
 }
 
 // TODO rename to StoreSweeper ..? and SweepExpired() .. and what is this "Every" thing .. weird
-type StoreCleaner interface {
-	// CleanExpiredEvery cleans expired keys every d duration.
-	// If onError is not nil, it will be called when an error occurs.
-	CleanExpiredEvery(ctx context.Context, d time.Duration, onError func(err error))
+// this is used by gcstorage .. check ..
+// also, we'll rename gcstore to just gcloudcache
+// type StoreCleaner interface {
+// 	// CleanExpiredEvery cleans expired keys every d duration.
+// 	// If onError is not nil, it will be called when an error occurs.
+// 	CleanExpiredEvery(ctx context.Context, d time.Duration, onError func(err error))
+// }
+
+type ByteStoreGetter interface {
+	ByteStore() Store[[]byte]
 }
 
-type Backend interface {
-	Apply(*StoreOptions)
-}
+// type ByteStore interface {
+// 	Store[[]byte]
+// 	ByteSerializer
+// }
+
+// type Serializer[T any] interface {
+// 	Serialize(value any) (T, error)
+// 	Deserialize(data []byte) (T, error)
+// }
+
+// type ByteSerializer Serializer[[]byte]

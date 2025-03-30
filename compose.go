@@ -3,21 +3,32 @@ package cachestore
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
 type ComposeStore[V any] struct {
 	stores []Store[V]
+	name   string
 }
 
 func Compose[V any](stores ...Store[V]) (Store[V], error) {
 	if len(stores) == 0 {
 		return nil, fmt.Errorf("cachestore: attempting to compose with empty store list")
 	}
+	names := make([]string, len(stores))
+	for _, s := range stores {
+		names = append(names, s.Name())
+	}
 	cs := &ComposeStore[V]{
 		stores: stores,
+		name:   strings.Join(names, "+"),
 	}
 	return cs, nil
+}
+
+func (cs *ComposeStore[V]) Name() string {
+	return cs.name
 }
 
 func (cs *ComposeStore[V]) Exists(ctx context.Context, key string) (bool, error) {
