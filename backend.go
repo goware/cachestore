@@ -10,6 +10,7 @@ type Backend interface {
 	// Store[any]
 	Name() string
 	// TODO: .. prob can do a few more things.. like config apply maybe..?
+	// ...
 }
 
 func OpenStore[T any](backend Backend) Store[T] {
@@ -110,9 +111,6 @@ func (s *backendAdapter[T]) Set(ctx context.Context, key string, value T) error 
 	} else {
 		return s.store.Set(ctx, key, value)
 	}
-
-	// return byteStore.Set(ctx, key, value)
-	return nil
 }
 
 func (s *backendAdapter[T]) BatchGet(ctx context.Context, keys []string) ([]T, []bool, error) {

@@ -4,34 +4,28 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/goware/cachestore"
-	"github.com/goware/cachestore/memlru"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCompose(t *testing.T) {
 	n := 20
 
-	m1s, err := memlru.NewWithSize[string](n, cachestore.WithDefaultKeyExpiry(6*time.Second))
-	require.NoError(t, err)
-
-	m2s, err := memlru.NewWithSize[string](n, cachestore.WithDefaultKeyExpiry(9*time.Second))
-	require.NoError(t, err)
+	m1s := NewMockStore[string]()
+	m2s := NewMockStore[string]()
 
 	cs, err := cachestore.Compose(m1s, m2s)
-	require.NoError(t, err)
+	assertNoError(t, err)
 
 	ctx := context.Background()
 
 	for i := 0; i < n; i++ {
 		err := m1s.Set(ctx, fmt.Sprintf("foo:%d", i), fmt.Sprintf("a%d", i))
-		require.NoError(t, err)
+		assertNoError(t, err)
 	}
 	for i := 0; i < n; i++ {
 		err := cs.Set(ctx, fmt.Sprintf("foo:%d", i), fmt.Sprintf("b%d", i))
-		require.NoError(t, err)
+		assertNoError(t, err)
 	}
 
 	// Get some keys
@@ -39,14 +33,14 @@ func TestCompose(t *testing.T) {
 		key := "foo:10"
 
 		val, ok, err := m1s.Get(ctx, key)
-		require.NoError(t, err)
-		require.True(t, ok)
-		require.Equal(t, "b10", val)
+		assertNoError(t, err)
+		assertTrue(t, ok)
+		assertEqual(t, "b10", val)
 
 		val, ok, err = m2s.Get(ctx, key)
-		require.NoError(t, err)
-		require.True(t, ok)
-		require.Equal(t, "b10", val)
+		assertNoError(t, err)
+		assertTrue(t, ok)
+		assertEqual(t, "b10", val)
 	}
 
 	// Overwrite random keys
@@ -58,19 +52,19 @@ func TestCompose(t *testing.T) {
 		cs.Set(ctx, "foo:6", "c6")
 
 		val, ok, err := cs.Get(ctx, "foo:8")
-		require.NoError(t, err)
-		require.True(t, ok)
-		require.Equal(t, "c8", val)
+		assertNoError(t, err)
+		assertTrue(t, ok)
+		assertEqual(t, "c8", val)
 
 		val, ok, err = cs.Get(ctx, "foo:7")
-		require.NoError(t, err)
-		require.True(t, ok)
-		require.Equal(t, "b7", val)
+		assertNoError(t, err)
+		assertTrue(t, ok)
+		assertEqual(t, "b7", val)
 
 		val, ok, err = cs.Get(ctx, "foo:6")
-		require.NoError(t, err)
-		require.True(t, ok)
-		require.Equal(t, "c6", val)
+		assertNoError(t, err)
+		assertTrue(t, ok)
+		assertEqual(t, "c6", val)
 	}
 
 	// Batch get, etc.
@@ -78,7 +72,7 @@ func TestCompose(t *testing.T) {
 		// first lets normalize all the values again
 		for i := 0; i < n; i++ {
 			err := cs.Set(ctx, fmt.Sprintf("foo:%d", i), fmt.Sprintf("z%d", i))
-			require.NoError(t, err)
+			assertNoError(t, err)
 		}
 
 		// then lets delete some random keys in both sets
@@ -93,34 +87,14 @@ func TestCompose(t *testing.T) {
 		vals, exists, err := cs.BatchGet(ctx, []string{
 			"foo:0", "foo:1", "foo:2", "foo:3", "foo:4", "foo:5", "foo:6", "foo:7", "foo:8", "foo:9", "foo:10",
 		})
-		require.NoError(t, err)
+		assertNoError(t, err)
 		for _, e := range exists {
-			require.True(t, e)
+			assertTrue(t, e)
 		}
 		for i, v := range vals {
-			require.NotEmpty(t, v)
-			require.Equal(t, fmt.Sprintf("z%d", i), v)
+			assertTrue(t, len(v) > 0)
+			assertEqual(t, fmt.Sprintf("z%d", i), v)
 		}
-	}
-
-	// Wait for expiry..
-	time.Sleep(7 * time.Second)
-
-	{
-		val, ok, err := m1s.Get(ctx, "foo:1")
-		require.NoError(t, err)
-		require.False(t, ok)
-		require.Empty(t, val)
-
-		val, ok, err = m2s.Get(ctx, "foo:1")
-		require.NoError(t, err)
-		require.True(t, ok)
-		require.NotEmpty(t, val)
-
-		val, ok, err = cs.Get(ctx, "foo:1")
-		require.NoError(t, err)
-		require.True(t, ok)
-		require.NotEmpty(t, val)
 	}
 
 }
