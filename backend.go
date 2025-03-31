@@ -3,6 +3,7 @@ package cachestore
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -16,9 +17,10 @@ type Backend interface {
 func OpenStore[T any](backend Backend) Store[T] {
 	store, ok := backend.(Store[any])
 	if !ok {
-		panic("zzzz") // TODO ..
+		return &backendAdapter[T]{anyStore: nil}
+	} else {
+		return newBackendAdapter[T](store)
 	}
-	return newBackendStoreAdapter[T](store)
 }
 
 // type Backend interface {
@@ -28,67 +30,80 @@ func OpenStore[T any](backend Backend) Store[T] {
 // 	Apply(*StoreOptions) // TODO: rename.. ? ApplyStoreOptions() ..? ..?
 // }
 
-func newBackendStoreAdapter[T any](anyStore Store[any]) Store[T] {
+var ErrBackendAdapterNil = fmt.Errorf("cachestore: backend adapter is nil")
+var ErrBackendTypeCast = fmt.Errorf("cachestore: backend type cast failure")
+
+func newBackendAdapter[T any](anyStore Store[any]) Store[T] {
 	adapter := &backendAdapter[T]{
-		store: anyStore,
-		// store:   Open[T](backend),
+		anyStore: anyStore,
 	}
 	return adapter
 }
 
 type backendAdapter[T any] struct {
-	store Store[any]
+	anyStore Store[any]
 }
 
 func (s *backendAdapter[T]) Name() string {
-	return s.store.Name()
+	if s.anyStore == nil {
+		return ""
+	}
+	return s.anyStore.Name()
 }
 
 func (s *backendAdapter[T]) Get(ctx context.Context, key string) (T, bool, error) {
 	var v T
 
-	bs, ok := s.store.(ByteStoreGetter)
+	if s.anyStore == nil {
+		return v, false, ErrBackendAdapterNil
+	}
+
+	bs, ok := s.anyStore.(ByteStoreGetter)
 	if ok {
+		// If the underlining store implements ByteStoreGetter,
+		// then we assume the Get will return []byte types, and we will
+		// handle serialization here. This is used by cachestore-redis
+		// and all other external stores.
 		byteStore := bs.ByteStore()
 
 		bv, ok, err := byteStore.Get(ctx, key)
 		if err != nil {
 			return v, false, err
 		}
-		_ = ok
-
-		// byteSerializer, ok := byteStore.(ByteSerializer)
-		// if !ok {
-		// 	panic("nooopp...")
-		// }
-
-		// deserialized, err := byteSerializer.Deserialize(bv)
-		// if err != nil {
-		// 	return v, false, err
-		// }
+		if !ok {
+			return v, false, nil
+		}
 
 		deserialized, err := Deserialize[T](bv)
 		if err != nil {
 			return v, false, err
 		}
-
 		return deserialized, true, nil
-
 	} else {
-		bv, ok, err := s.store.Get(ctx, key)
+		// Otherwise, we just use the underlying store's Get method,
+		// and type cast to the generic type. This is used by cachestore-mem.
+		bv, ok, err := s.anyStore.Get(ctx, key)
 		if err != nil {
 			return v, ok, err
 		}
+		if !ok {
+			return v, false, nil
+		}
 		v, ok = bv.(T)
+		if !ok {
+			return v, false, fmt.Errorf("cachestore: failed to cast value to type %T: %w", v, ErrBackendTypeCast)
+		}
 		return v, ok, nil
 	}
 }
 
 func (s *backendAdapter[T]) Set(ctx context.Context, key string, value T) error {
+	if s.anyStore == nil {
+		return ErrBackendAdapterNil
+	}
 
-	// fmt.Println("SUP?")
-
-	bs, ok := s.store.(ByteStoreGetter)
+	// See comments in Get()
+	bs, ok := s.anyStore.(ByteStoreGetter)
 	if ok {
 		byteStore := bs.ByteStore()
 
@@ -97,19 +112,9 @@ func (s *backendAdapter[T]) Set(ctx context.Context, key string, value T) error 
 			return err
 		}
 
-		// serializer, ok := bs.(ByteSerializer)
-		// if !ok {
-		// 	panic("the backend does not implement ByteSerializer")
-		// }
-
-		// serialized, err := serializer.Serialize(value)
-		// if err != nil {
-		// 	panic(err)
-		// }
-
 		return byteStore.Set(ctx, key, serialized)
 	} else {
-		return s.store.Set(ctx, key, value)
+		return s.anyStore.Set(ctx, key, value)
 	}
 }
 
@@ -129,15 +134,15 @@ func (s *backendAdapter[T]) BatchSetEx(ctx context.Context, keys []string, value
 }
 
 func (s *backendAdapter[T]) Delete(ctx context.Context, key string) error {
-	return s.store.Delete(ctx, key)
+	return s.anyStore.Delete(ctx, key)
 }
 
 func (s *backendAdapter[T]) DeletePrefix(ctx context.Context, keyPrefix string) error {
-	return s.store.DeletePrefix(ctx, keyPrefix)
+	return s.anyStore.DeletePrefix(ctx, keyPrefix)
 }
 
 func (s *backendAdapter[T]) ClearAll(ctx context.Context) error {
-	return s.store.ClearAll(ctx)
+	return s.anyStore.ClearAll(ctx)
 }
 
 func (s *backendAdapter[T]) GetOrSetWithLock(ctx context.Context, key string, getter func(context.Context, string) (T, error)) (T, error) {
@@ -153,11 +158,11 @@ func (s *backendAdapter[T]) GetOrSetWithLockEx(ctx context.Context, key string, 
 }
 
 func (s *backendAdapter[T]) Exists(ctx context.Context, key string) (bool, error) {
-	return s.store.Exists(ctx, key)
+	return s.anyStore.Exists(ctx, key)
 }
 
 func (s *backendAdapter[T]) SetEx(ctx context.Context, key string, value T, ttl time.Duration) error {
-	return s.store.SetEx(ctx, key, value, ttl)
+	return s.anyStore.SetEx(ctx, key, value, ttl)
 }
 
 func (s *backendAdapter[T]) GetEx(ctx context.Context, key string) (T, *time.Duration, bool, error) {
@@ -173,58 +178,36 @@ func (s *backendAdapter[T]) CleanExpiredEvery(ctx context.Context, d time.Durati
 	// hmm..
 }
 
-func Deserialize[T any](data []byte) (T, error) {
-	var v T
-	err := json.Unmarshal(data, &v)
-	if err != nil {
-		return v, err
+func Serialize[V any](value V) ([]byte, error) {
+	switch v := any(value).(type) {
+	case string:
+		return []byte(v), nil
+	case []byte:
+		return v, nil
+	default:
+		out, err := json.Marshal(value)
+		if err != nil {
+			return nil, fmt.Errorf("cachestore: failed to marshal data: %w", err)
+		}
+		return out, nil
 	}
-	return v, nil
 }
 
-func Serialize[T any](value T) ([]byte, error) {
-	return json.Marshal(value)
+func Deserialize[V any](data []byte) (V, error) {
+	var out V
+	switch any(out).(type) {
+	case string:
+		str := string(data)
+		out = any(str).(V)
+		return out, nil
+	case []byte:
+		out = any(data).(V)
+		return out, nil
+	default:
+		err := json.Unmarshal(data, &out)
+		if err != nil {
+			return out, fmt.Errorf("cachestore: failed to unmarshal data: %w", err)
+		}
+		return out, nil
+	}
 }
-
-//--
-
-// func serialize(value any) ([]byte, error) {
-// 	// return the value directly if the type is a []byte or string,
-// 	// otherwise assume its json and unmarshal it
-// 	switch v := value.(type) {
-// 	case string:
-// 		return []byte(v), nil
-// 	case []byte:
-// 		return v, nil
-// 	default:
-// 		panic("mmm")
-// 		return json.Marshal(value) // wrap the error
-// 	}
-// }
-
-// func deserialize(data []byte) (any, error) {
-// 	var out any
-
-// 	spew.Dump(data)
-// 	spew.Dump(out)
-
-// 	switch any(out).(type) {
-// 	case string:
-// 		outv := reflect.ValueOf(&out).Elem()
-// 		outv.SetString(string(data))
-// 		return out, nil
-// 	case []byte:
-// 		outv := reflect.ValueOf(&out).Elem()
-// 		outv.SetBytes(data)
-// 		return out, nil
-// 	default:
-// 		t := reflect.TypeOf(&out)
-// 		fmt.Println("t:", t)
-
-// 		err := json.Unmarshal(data, &out)
-// 		if err != nil {
-// 			return out, fmt.Errorf("rediscache:failed to unmarshal data: %w", err)
-// 		}
-// 		return out, nil
-// 	}
-// }
