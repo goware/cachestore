@@ -63,11 +63,6 @@ func (s *MockStore[V]) SetEx(ctx context.Context, key string, value V, ttl time.
 	return nil
 }
 
-func (s *MockStore[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
-	// NOTE: ttl is ignored
-	return s.store[key], nil, true, nil
-}
-
 func (s *MockStore[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
 	for i, key := range keys {
 		s.store[key] = values[i]

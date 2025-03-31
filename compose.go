@@ -92,25 +92,6 @@ func (cs *composeStore[V]) BatchSetEx(ctx context.Context, keys []string, values
 	return nil
 }
 
-func (cs *composeStore[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
-	var out V
-	var ttl *time.Duration
-	var exists bool
-	var err error
-
-	for _, s := range cs.stores {
-		out, ttl, exists, err = s.GetEx(ctx, key)
-		if err != nil {
-			return out, ttl, exists, err
-		}
-		if exists {
-			break
-		}
-	}
-
-	return out, ttl, exists, nil
-}
-
 func (cs *composeStore[V]) Get(ctx context.Context, key string) (V, bool, error) {
 	var out V
 	var exists bool

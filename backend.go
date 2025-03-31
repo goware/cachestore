@@ -165,14 +165,6 @@ func (s *backendAdapter[T]) SetEx(ctx context.Context, key string, value T, ttl 
 	return s.anyStore.SetEx(ctx, key, value, ttl)
 }
 
-func (s *backendAdapter[T]) GetEx(ctx context.Context, key string) (T, *time.Duration, bool, error) {
-	// return s.backend.GetEx(ctx, key)
-	var v T
-	var ttl *time.Duration
-	var ok bool
-	return v, ttl, ok, nil
-}
-
 func (s *backendAdapter[T]) CleanExpiredEvery(ctx context.Context, d time.Duration, onError func(err error)) {
 	// s.backend.CleanExpiredEvery(ctx, d, onError)
 	// hmm..

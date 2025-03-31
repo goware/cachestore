@@ -45,12 +45,6 @@ func (s *NoopCache[V]) SetEx(ctx context.Context, key string, value V, ttl time.
 	return nil
 }
 
-func (c *NoopCache[V]) GetEx(ctx context.Context, key string) (V, *time.Duration, bool, error) {
-	var out V
-	ttl := time.Duration(0)
-	return out, &ttl, false, nil
-}
-
 func (s *NoopCache[V]) BatchSet(ctx context.Context, keys []string, values []V) error {
 	return nil
 }
