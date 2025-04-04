@@ -8,10 +8,10 @@ import (
 )
 
 type Backend interface {
-	// Store[any]
 	Name() string
 	// TODO: .. prob can do a few more things.. like config apply maybe..?
 	// ...
+	// Apply(*StoreOptions) // TODO: rename.. ? ApplyStoreOptions() ..? ..?
 }
 
 func OpenStore[T any](backend Backend) Store[T] {
@@ -22,13 +22,6 @@ func OpenStore[T any](backend Backend) Store[T] {
 		return newBackendAdapter[T](store)
 	}
 }
-
-// type Backend interface {
-// 	// TOOD: lets try this in play3.go ..
-
-// 	// maybe Register() ..?
-// 	Apply(*StoreOptions) // TODO: rename.. ? ApplyStoreOptions() ..? ..?
-// }
 
 var ErrBackendAdapterNil = fmt.Errorf("cachestore: backend adapter is nil")
 var ErrBackendTypeCast = fmt.Errorf("cachestore: backend type cast failure")
@@ -168,6 +161,7 @@ func (s *backendAdapter[T]) SetEx(ctx context.Context, key string, value T, ttl 
 func (s *backendAdapter[T]) CleanExpiredEvery(ctx context.Context, d time.Duration, onError func(err error)) {
 	// s.backend.CleanExpiredEvery(ctx, d, onError)
 	// hmm..
+	// TODOXXX ..
 }
 
 func Serialize[V any](value V) ([]byte, error) {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goware/cachestore"
+	"github.com/goware/cachestore/v2"
 )
 
 type MockStore[V any] struct {
