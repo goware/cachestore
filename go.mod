@@ -1,4 +1,4 @@
-module github.com/goware/cachestore/v2
+module github.com/goware/cachestore
 
 go 1.21
 

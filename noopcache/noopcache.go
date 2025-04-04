@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/goware/cachestore/v2"
+	"github.com/goware/cachestore"
 )
 
 var _ cachestore.Store[any] = &NoopCache[any]{}

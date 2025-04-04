@@ -16,9 +16,6 @@ func ComposeStores[V any](stores ...Store[V]) (Store[V], error) {
 	if len(stores) == 0 {
 		return nil, fmt.Errorf("cachestore: attempting to compose with empty store list")
 	}
-	if len(stores) == 1 {
-		return stores[0], nil
-	}
 	names := make([]string, len(stores))
 	for _, s := range stores {
 		names = append(names, s.Name())
@@ -31,12 +28,6 @@ func ComposeStores[V any](stores ...Store[V]) (Store[V], error) {
 }
 
 func ComposeBackends[V any](backends ...Backend) (Store[V], error) {
-	if len(backends) == 0 {
-		return nil, fmt.Errorf("cachestore: attempting to compose with empty backend list")
-	}
-	if len(backends) == 1 {
-		return OpenStore[V](backends[0]), nil
-	}
 	stores := make([]Store[V], len(backends))
 	for i, backend := range backends {
 		stores[i] = OpenStore[V](backend)
